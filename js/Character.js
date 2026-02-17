@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { assetLoader } from './AssetLoader.js';
 
 export class NPC {
     // ... (NPC class remains unchanged)
@@ -102,8 +103,8 @@ export class Character {
             d: false
         };
 
-        // Camera offset
-        this.cameraOffset = new THREE.Vector3(0, 10, 15);
+        // Camera offset (Higher and further back)
+        this.cameraOffset = new THREE.Vector3(0, 15, 25);
 
         // Stats
         this.stats = {
@@ -224,36 +225,31 @@ export class Character {
     }
 
     loadModel() {
-        const loader = new GLTFLoader();
-        loader.load('assets/models/Soldier.glb', (gltf) => {
-            console.log("Model loaded", gltf);
-            this.model = gltf.scene;
+        assetLoader.loadGLTF('assets/models/Soldier.glb').then(gltf => {
+            console.log("Character Model Loaded", gltf);
 
-            // Remove placeholder
+            this.model = gltf.scene.clone();
             this.mesh.remove(this.placeholder);
-
             this.mesh.add(this.model);
-            this.model.traverse(function (object) {
-                if (object.isMesh) object.castShadow = true;
+
+            this.model.traverse(child => {
+                if (child.isMesh) child.castShadow = true;
             });
 
-            // Animations
+            // Re-setup mixer with the NEW cloned model
             this.mixer = new THREE.AnimationMixer(this.model);
-            const animations = gltf.animations;
 
-            // Soldier.glb animations: Idle, Run, Walk, TPose
-            // Check names
-            // console.log(animations); 
+            // Re-link animations from original gltf to the new mixer
+            if (gltf.animations && gltf.animations.length > 0) {
+                this.actions['Idle'] = this.mixer.clipAction(gltf.animations.find(a => a.name === 'Idle') || gltf.animations[0]);
+                this.actions['Walk'] = this.mixer.clipAction(gltf.animations.find(a => a.name === 'Walk') || gltf.animations[1]);
+                this.actions['Run'] = this.mixer.clipAction(gltf.animations.find(a => a.name === 'Run') || gltf.animations[2]);
 
-            this.actions['Idle'] = this.mixer.clipAction(animations.find(clip => clip.name === 'Idle'));
-            this.actions['Walk'] = this.mixer.clipAction(animations.find(clip => clip.name === 'Walk'));
-            this.actions['Run'] = this.mixer.clipAction(animations.find(clip => clip.name === 'Run'));
-            // this.actions['TPose'] = this.mixer.clipAction(animations[3]);
-
-            this.activeAction = this.actions['Idle'];
-            this.activeAction.play();
-        }, undefined, (error) => {
-            console.error('An error happened loading the model', error);
+                this.activeAction = this.actions['Idle'];
+                if (this.activeAction) this.activeAction.play();
+            }
+        }).catch(err => {
+            console.error("Character: Load failed", err);
         });
     }
 
@@ -394,12 +390,13 @@ export class Character {
     }
 
     updateCamera() {
-        // Follow character logic moved to Game.js or kept simple here?
-        // Let's keep it here for now but we might change it soon.
         this.camera.position.x = this.mesh.position.x + this.cameraOffset.x;
         this.camera.position.y = this.mesh.position.y + this.cameraOffset.y;
         this.camera.position.z = this.mesh.position.z + this.cameraOffset.z;
-        this.camera.lookAt(this.mesh.position);
+
+        // Look at head level instead of feet
+        const targetPos = this.mesh.position.clone().add(new THREE.Vector3(0, 2, 0));
+        this.camera.lookAt(targetPos);
     }
 
     updateStats(deltaTime) {

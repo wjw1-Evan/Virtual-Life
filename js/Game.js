@@ -91,8 +91,8 @@ export class Game {
             }
         });
 
-        // Camera setup (moved from constructor)
-        this.camera.position.set(0, 10, 20);
+        // Camera setup (TPS initial perspective)
+        this.camera.position.set(-15, 15, 10); // Elevated and behind start pos
 
         // Controls (moved from constructor)
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -301,7 +301,7 @@ export class Game {
             this.controls.enabled = true;
             this.character.mesh.visible = true;
             // Reset camera position relative to char
-            this.controls.object.position.set(0, 10, 20).add(this.character.mesh.position);
+            this.controls.object.position.set(0, 15, 25).add(this.character.mesh.position);
             this.showMessage("第三人称视角");
         } else {
             // Switch to First Person
@@ -625,8 +625,9 @@ export class Game {
                 this.camera.position.copy(this.character.mesh.position).add(new THREE.Vector3(0, 1.7, 0));
                 // Rotation is handled by PointerLockControls
             } else {
-                // TPS: Camera looks at character
-                this.controls.target.copy(this.character.mesh.position);
+                // TPS: Camera looks at character head
+                const targetPos = this.character.mesh.position.clone().add(new THREE.Vector3(0, 1.8, 0));
+                this.controls.target.copy(targetPos);
                 this.controls.update(); // Only update OrbitControls when active
             }
         }

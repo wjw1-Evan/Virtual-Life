@@ -13,7 +13,7 @@ export class AICar {
 
         // Load Model
         assetLoader.loadModel('assets/models/car.glb').then(model => {
-            model.scale.set(0.5, 0.5, 0.5); // Adjust scale to match world
+            model.scale.set(4.5, 4.5, 4.5); // Adjust scale to match world
             // Rotate model if needed (Ferrari model in Three.js usually faces -Z or +Z)
             model.rotation.y = Math.PI;
             this.mesh.add(model);
@@ -63,7 +63,7 @@ export class Car {
 
         // Load High Quality Model
         assetLoader.loadModel('assets/models/car.glb').then(model => {
-            model.scale.set(0.6, 0.6, 0.6);
+            model.scale.set(5.0, 5.0, 5.0); // Scaled up to match world
             model.rotation.y = Math.PI;
             this.mesh.add(model);
         });

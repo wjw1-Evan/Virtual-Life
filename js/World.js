@@ -87,28 +87,91 @@ export class World {
             group.position.set(zone.x, 0, zone.z);
             this.scene.add(group);
 
+            // 1. Immediate Visual (Placeholder)
+            const pSize = 10 * (zone.scale || 1);
+            const placeholder = new THREE.Mesh(
+                new THREE.BoxGeometry(pSize, pSize, pSize),
+                new THREE.MeshStandardMaterial({ color: 0x555555, wireframe: true, transparent: true, opacity: 0.3 })
+            );
+            placeholder.position.y = pSize / 2;
+            group.add(placeholder);
+
             let modelPath = 'assets/models/office.glb';
             if (zone.type === 'house') modelPath = 'assets/models/house.glb';
             if (zone.type === 'store') modelPath = 'assets/models/store.glb';
 
+            // 1. Define Color Palettes
+            const palettes = {
+                house: [0xfdfd96, 0xaec6cf, 0xffb7ce, 0x77dd77, 0xffd1dc, 0xcfcfff], // Pastel neighborhood
+                store: [0xff4d4d, 0x4da6ff, 0xffa31a, 0x9966ff, 0x00cc99], // Vibrant commercial
+                office: [0x333333, 0x4d4d4d, 0x1a1a1a, 0x003366, 0x2d5a27] // Professional tones
+            };
+
+            const typePalette = palettes[zone.type] || palettes.office;
+            const wallColor = typePalette[Math.floor(Math.random() * typePalette.length)];
+            const roofColor = 0x333333; // Default dark roof
+
             assetLoader.loadModel(modelPath).then(model => {
-                const s = zone.scale || 1.4;
+                console.log(`World: Loaded ${zone.name}`);
+                group.remove(placeholder);
+
+                // Increase scale significantly
+                const baseScale = zone.type === 'house' ? 25 : 20;
+                const s = (zone.scale || 1) * baseScale;
                 model.scale.set(s, s, s);
+                model.position.y = 0.2;
                 group.add(model);
 
-                // Add interactivity
                 model.traverse(child => {
                     if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+
+                        // Apply Color Enrichment
+                        if (child.material) {
+                            child.material = child.material.clone();
+                            child.material.side = THREE.DoubleSide;
+
+                            // Identifying mesh parts by name if possible, or just applying base color
+                            const name = child.name.toLowerCase();
+                            const isWall = name.includes('wall') || name.includes('body') || name.includes('base') || name.includes('structure');
+                            const isRoof = name.includes('roof') || name.includes('top');
+                            const isWindow = name.includes('window') || name.includes('glass');
+
+                            if (isWindow) {
+                                child.material.color.setHex(0xAADDFF);
+                                child.material.emissive.setHex(0x224466);
+                                child.material.transparent = true;
+                                child.material.opacity = 0.8;
+                            } else if (isWall) {
+                                child.material.color.setHex(wallColor);
+                            } else if (isRoof) {
+                                child.material.color.setHex(roofColor);
+                            } else if (zone.type === 'house') {
+                                // For houses, if it's not a specified part, use wall color
+                                child.material.color.setHex(wallColor);
+                                if (name.includes('trim')) child.material.color.lerp(new THREE.Color(0xffffff), 0.3);
+                            } else {
+                                // Default fallback: tint towards wall color
+                                child.material.color.lerp(new THREE.Color(wallColor), 0.3);
+                            }
+                        }
+
                         child.userData = { type: zone.name, label: zone.label };
                         this.buildings.push(child);
                     }
                 });
+            }).catch(err => {
+                console.error(`World: Load failed for ${zone.name}`, err);
+                placeholder.material.wireframe = false;
+                placeholder.material.opacity = 1;
+                placeholder.material.color.setHex(0x888888);
             });
 
             // Label
             if (zone.label) {
                 const label = this.createLabel(zone.label);
-                label.position.y = (zone.scale || 1.4) * 10;
+                label.position.y = (zone.scale || 1) * 15;
                 group.add(label);
             }
 

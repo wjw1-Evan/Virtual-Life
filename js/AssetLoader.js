@@ -8,29 +8,32 @@ export class AssetLoader {
         dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
         this.loader.setDRACOLoader(dracoLoader);
 
-        this.cache = new Map();
         this.promiseCache = new Map();
     }
 
-    async loadModel(url) {
-        if (this.cache.has(url)) {
-            return this.cache.get(url).clone();
-        }
-
+    /**
+     * Loads the full GLTF result, cached.
+     */
+    async loadGLTF(url) {
         if (this.promiseCache.has(url)) {
-            const gltf = await this.promiseCache.get(url);
-            return gltf.scene.clone();
+            return await this.promiseCache.get(url);
         }
 
         const promise = new Promise((resolve, reject) => {
             this.loader.load(url, (gltf) => {
-                this.cache.set(url, gltf.scene);
                 resolve(gltf);
             }, undefined, reject);
         });
 
         this.promiseCache.set(url, promise);
-        const gltf = await promise;
+        return await promise;
+    }
+
+    /**
+     * Loads just the scene clone, cached.
+     */
+    async loadModel(url) {
+        const gltf = await this.loadGLTF(url);
         return gltf.scene.clone();
     }
 }
