@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Life</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="ui-container">
+        <div id="stats">
+            <div>时间: <span id="time">08:00</span></div>
+            <div>天数: <span id="day-counter">1</span></div>
+            <div>金钱: $<span id="money">100</span></div>
+            <!-- Hunger -->
+            <div class="stat-group">
+                <div class="stat-header">
+                    <span>饥饿度</span>
+                    <span><span id="hunger-val">100</span>%</span>
+                </div>
+                <div class="stat-bar">
+                    <div id="hunger-bar" class="stat-fill"
+                        style="width: 100%; background: linear-gradient(90deg, #ff4444, #ff8888);"></div>
+                </div>
+            </div>
+
+            <!-- Energy -->
+            <div class="stat-group">
+                <div class="stat-header">
+                    <span>精力</span>
+                    <span><span id="energy-val">100</span>%</span>
+                </div>
+                <div class="stat-bar">
+                    <div id="energy-bar" class="stat-fill"
+                        style="width: 100%; background: linear-gradient(90deg, #44ff44, #88ff88);"></div>
+                </div>
+            </div>
+
+            <!-- Health -->
+            <div class="stat-group">
+                <div class="stat-header">
+                    <span>健康度</span>
+                    <span><span id="health-val">100</span>%</span>
+                </div>
+                <div class="stat-bar">
+                    <div id="health-bar" class="stat-fill"
+                        style="width: 100%; background: linear-gradient(90deg, #ff4444, #ff2222);"></div>
+                </div>
+            </div>
+
+            <!-- Stress -->
+            <div class="stat-group">
+                <div class="stat-header">
+                    <span>压力值</span>
+                    <span><span id="stress-val">0</span>%</span>
+                </div>
+                <div class="stat-bar">
+                    <div id="stress-bar" class="stat-fill"
+                        style="width: 0%; background: linear-gradient(90deg, #ffaa00, #ffcc00);"></div>
+                </div>
+            </div>
+
+            <!-- Hygiene -->
+            <div class="stat-group">
+                <div class="stat-header">
+                    <span>清洁度</span>
+                    <span><span id="hygiene-val">100</span>%</span>
+                </div>
+                <div class="stat-bar">
+                    <div id="hygiene-bar" class="stat-fill"
+                        style="width: 100%; background: linear-gradient(90deg, #4444ff, #8888ff);"></div>
+                </div>
+            </div>
+        </div>
+        <div id="controls-hint">
+            WASD - 移动 | E - 交互 | F - 驾驶/切换视角 | V - 切换人称
+        </div>
+        <div id="interaction-prompt" class="hidden">
+            按 E 交互
+        </div>
+        <div id="game-message" class="hidden"></div>
+    </div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module" src="js/main.js"></script>
+</body>
+
+</html>
