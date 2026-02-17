@@ -1,10 +1,13 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
 export class World {
     constructor(scene) {
         this.scene = scene;
         this.buildings = [];
         this.neonMaterials = []; // Store neon materials for global update
+        this.mixers = []; // Store animation mixers
 
         this.createGround();
         this.createBuildings();
@@ -12,7 +15,17 @@ export class World {
         this.createEnvironment();
         this.createStreetLights();
         this.createParticles();
+        this.addUrbanProps(); // Added more granular details
     }
+
+    update(deltaTime) {
+        // Update all animation mixers
+        this.mixers.forEach(mixer => mixer.update(deltaTime));
+    }
+
+
+
+    // Procedural house creation is below in this file.
 
     createGround() {
         const geometry = new THREE.PlaneGeometry(400, 400); // 400x400
@@ -64,52 +77,61 @@ export class World {
             { name: 'Casino', type: 'generic', style: 'modern', color: 0xFFD700, label: '赌场', emissive: 0xFF0000, x: 80, z: 40, neonColor: 0xFF0000 },
             { name: 'Museum', type: 'generic', style: 'classic', color: 0xF5F5DC, label: '博物馆', x: 60, z: 0 },
             { name: 'Art Gallery', type: 'generic', style: 'modern', color: 0xFFFFFF, label: '画廊', x: 80, z: 0 },
-            { name: 'Stadium', type: 'generic', style: 'industrial', color: 0xC0C0C0, label: '体育馆', scale: 2, x: 100, z: 0 },
+            // --- CENTER: PLAZA & Landmarks ---
+            { name: 'Fountain Plaza', type: 'generic', style: 'classic', color: 0xFFFFFF, label: '喷泉广场', x: 0, z: 0, scale: 1 },
+            { name: 'Bridge', type: 'generic', style: 'bridge', color: 0xA52A2A, label: '金门大桥', x: 0, z: 60, scale: 2 }, // Link to residential
 
-            // Shopping & Other
-            { name: 'Shop', type: 'generic', style: 'store', color: 0xF5DEB3, label: '商店', x: 0, z: 20 }, // General Store
-            { name: 'Clothing Store', type: 'generic', style: 'store', color: 0xFFC0CB, label: '服装店', x: -60, z: 20 },
-            { name: 'Tech Store', type: 'generic', style: 'modern', color: 0x4682B4, label: '电子店', x: -80, z: 20 },
-            { name: 'Bookstore', type: 'generic', style: 'store', color: 0x8B4513, label: '书店', x: -80, z: 0 },
-            { name: 'Toy Store', type: 'generic', style: 'store', color: 0xFFFF00, label: '玩具店', x: -80, z: -20 },
-            { name: 'Jewelry Store', type: 'generic', style: 'store', color: 0x00FFFF, label: '珠宝店', shiny: true, x: -80, z: -40 },
-            { name: 'Florist', type: 'generic', style: 'store', color: 0x00FF00, label: '花店', x: -60, z: -40 },
+            // --- NORTH: COMMERCIAL DISTRICT (Shops, Entertainment) ---
+            { name: 'Shopping Mall', type: 'generic', style: 'modern', color: 0xFFD700, label: '购物中心', x: 0, z: -80, scale: 2.5 },
+            { name: 'Gym', type: 'generic', style: 'store', color: 0x4169E1, label: '健身房', x: -30, z: -40, awningColor: 0x0000FF },
+            { name: 'Club', type: 'generic', style: 'store', color: 0x111111, label: '夜店', x: 30, z: -40, neonColor: 0xFF00FF },
+            { name: 'Cinema', type: 'generic', style: 'modern', color: 0x8A2BE2, label: '电影院', x: 0, z: -120, scale: 2 },
 
-            // Education / Cultural
-            { name: 'School', type: 'generic', style: 'classic', color: 0xB22222, label: '学校', x: -40, z: 40 },
-            { name: 'University', type: 'generic', style: 'classic', color: 0x800000, label: '大学', scale: 1.5, x: -80, z: 40 },
-            { name: 'Library', type: 'generic', style: 'classic', color: 0xF5F5DC, label: '图书馆', x: -40, z: 0 },
-            { name: 'Church', type: 'generic', style: 'church', color: 0xFFFFFF, label: '教堂', x: -80, z: 60 },
-            { name: 'Hotel', type: 'generic', style: 'modern', color: 0x4B0082, label: '酒店', scale: 1.2, x: 100, z: 60 },
+            // Food Street (North-West)
+            { name: 'Restaurant', type: 'generic', style: 'store', color: 0xFFA07A, label: '西餐厅', x: -60, z: -40, awningColor: 0xFF4500 },
+            { name: 'Cafe', type: 'generic', style: 'store', color: 0x8B4513, label: '咖啡馆', x: -60, z: -60, awningColor: 0xF5DEB3 },
+            { name: 'Bakery', type: 'generic', style: 'store', color: 0xFFD700, label: '面包房', x: -80, z: -60, awningColor: 0xFFFFFF },
+            { name: 'Pizza Place', type: 'generic', style: 'store', color: 0xFF4500, label: '披萨店', x: -80, z: -40, awningColor: 0x008000 },
 
-            // Landmarks (Phase 14)
-            { name: 'Pyramid', type: 'generic', style: 'pyramid', color: 0xD2B48C, label: '金字塔', x: -140, z: -140, scale: 3 },
-            { name: 'Eiffel Tower', type: 'generic', style: 'tower', color: 0x8B4513, label: '埃菲尔铁塔', x: 140, z: 140, scale: 2 },
-            { name: 'Ferris Wheel', type: 'generic', style: 'wheel', color: 0xFF0000, label: '摩天轮', x: 100, z: 100, scale: 2 },
-            { name: 'Airport', type: 'generic', style: 'airport', color: 0xCCCCCC, label: '机场', x: -150, z: 150, scale: 4 },
-            { name: 'Castle', type: 'generic', style: 'castle', color: 0x808080, label: '城堡', x: 150, z: -150, scale: 2 },
-            { name: 'Skyscraper A', type: 'generic', style: 'modern', color: 0x223344, label: '摩天大楼 A', x: 120, z: -20, scale: 2.5 },
-            { name: 'Skyscraper B', type: 'generic', style: 'modern', color: 0x334455, label: '摩天大楼 B', x: 140, z: -40, scale: 3 },
-            { name: 'Skyscraper C', type: 'generic', style: 'modern', color: 0x445566, label: '摩天大楼 C', x: 160, z: -60, scale: 2.2 },
-            { name: 'Factory', type: 'generic', style: 'industrial', color: 0x555555, label: '化工厂', x: -120, z: 100, scale: 1.5 },
-            { name: 'Power Plant', type: 'generic', style: 'industrial', color: 0x444444, label: '发电厂', x: -160, z: 100, scale: 1.8 },
-            { name: 'Warehouse', type: 'generic', style: 'store', color: 0x666666, label: '仓库', x: -100, z: 120 },
-            { name: 'Concert Hall', type: 'generic', style: 'modern', color: 0x9932CC, label: '音乐厅', x: 80, z: 20, scale: 1.2 },
-            { name: 'Convention Center', type: 'generic', style: 'modern', color: 0x4682B4, label: '会展中心', x: 100, z: 20, scale: 2 },
-            { name: 'Observatory', type: 'generic', style: 'industrial', color: 0xFFFFFF, label: '天文台', x: -160, z: -40 },
+            // Retail Street (North-East)
+            { name: 'Supermarket', type: 'generic', style: 'store', color: 0x32CD32, label: '超市', x: 60, z: -40, awningColor: 0x006400 },
+            { name: 'Clothing Store', type: 'generic', style: 'store', color: 0xFF69B4, label: '服装店', x: 60, z: -60, awningColor: 0xFFC0CB },
+            { name: 'Electronics', type: 'generic', style: 'store', color: 0x00CED1, label: '电子产品', x: 80, z: -40, awningColor: 0x000080 },
+            { name: 'Bookstore', type: 'generic', style: 'store', color: 0x8B0000, label: '书店', x: 80, z: -60, awningColor: 0xA52A2A },
+
+            // --- SOUTH: RESIDENTIAL DISTRICT (Homes) ---
+            { name: 'My Home', type: 'house', style: 'modern', label: '我的家', x: -15, z: 50 },
+            { name: 'Neighbor A', type: 'house', style: 'modern', label: '邻居 A', x: 15, z: 50 },
+            { name: 'Neighbor B', type: 'house', style: 'modern', label: '邻居 B', x: -15, z: 80 },
+            { name: 'Neighbor C', type: 'house', style: 'modern', label: '邻居 C', x: 15, z: 80 },
+            { name: 'Apartment A', type: 'generic', style: 'modern', color: 0xDDDDDD, label: '公寓 A', x: -40, z: 70, scale: 1.5 },
+            { name: 'Apartment B', type: 'generic', style: 'modern', color: 0xDDDDDD, label: '公寓 B', x: 40, z: 70, scale: 1.5 },
+
+            // --- EAST: BUSINESS DISTRICT (Offices, Gov) ---
+            { name: 'Office A', type: 'office', style: 'modern', label: '写写字楼 A', x: 100, z: 10 },
+            { name: 'Office B', type: 'office', style: 'modern', label: '写写字楼 B', x: 100, z: 40 },
+            { name: 'Convention Center', type: 'generic', style: 'modern', color: 0x4682B4, label: '会展中心', x: 100, z: -30, scale: 2 },
+            { name: 'Bank', type: 'generic', style: 'classic', color: 0xD3D3D3, label: '银行', x: 80, z: 0 },
+            { name: 'Skyscraper A', type: 'generic', style: 'modern', color: 0x223344, label: '天际大厦', x: 140, z: 0, scale: 3 },
+
+            // --- WEST: SERVICES & INDUSTRIAL ---
+            { name: 'Hospital', type: 'generic', style: 'modern', color: 0xFFFFFF, label: '总医院', mark: 'helipad', x: -100, z: 0, scale: 1.5, neonColor: 0xFF0000 },
+            { name: 'Police Station', type: 'generic', style: 'modern', color: 0x000080, label: '警察局', x: -100, z: 30 },
+            { name: 'Fire Station', type: 'generic', style: 'store', color: 0xFF0000, label: '消防局', x: -80, z: 30 }, // Using store style for open garage feel? Or classic.
+            { name: 'Factory', type: 'generic', style: 'industrial', color: 0x555555, label: '化工厂', x: -140, z: -20, scale: 1.5 },
+            { name: 'Power Plant', type: 'generic', style: 'industrial', color: 0x444444, label: '发电厂', x: -160, z: 0, scale: 1.8 },
+
+            // --- REMOTE / LANDMARKS ---
             { name: 'Lighthouse', type: 'generic', style: 'tower', color: 0xFFFFFF, label: '灯塔', striped: true, x: 180, z: 180 },
-            { name: 'Bridge', type: 'generic', style: 'bridge', color: 0xA52A2A, label: '金门大桥', x: 0, z: 150, scale: 3 },
-            { name: 'Pagoda', type: 'generic', style: 'pagoda', color: 0x8B0000, label: '五重塔', x: -100, z: -100 },
-            { name: 'Windmill', type: 'generic', style: 'windmill', color: 0xFFFFFF, label: '风车', x: -180, z: -80 },
-            { name: 'Statue', type: 'generic', style: 'statue', color: 0xC0C0C0, label: '自由女神', x: 180, z: -100 },
-            { name: 'Rocket', type: 'generic', style: 'rocket', color: 0xFFFFFF, label: '火箭基地', x: -180, z: 180 }
+            { name: 'Rocket', type: 'generic', style: 'rocket', color: 0xFFFFFF, label: '火箭基地', x: -180, z: 180 },
+            { name: 'Windmill', type: 'generic', style: 'windmill', color: 0xFFFFFF, label: '风车', x: -180, z: -150 }
         ];
 
         zones.forEach(zone => {
             let buildingGroup;
             // Existing custom methods
-            if (zone.type === 'house') buildingGroup = this.createHouse();
-            else if (zone.type === 'office') buildingGroup = this.createOffice();
+            if (zone.type === 'house') buildingGroup = this.createHouse(zone);
+            else if (zone.type === 'office') buildingGroup = this.createOffice(zone);
             else if (zone.type === 'desk') buildingGroup = this.createDesk();
             else if (zone.type === 'shower') buildingGroup = this.createShower();
             // New generic factory for the rest
@@ -117,6 +139,12 @@ export class World {
 
             if (buildingGroup) {
                 buildingGroup.position.set(zone.x, 0, zone.z);
+
+                // Randomize Rotation for "Organic" feel (except special ones)
+                if (zone.type === 'house') {
+                    buildingGroup.rotation.y = (Math.random() - 0.5) * 0.2; // Slight jitter
+                }
+
                 buildingGroup.userData = { type: zone.name }; // Metadata for interaction
 
                 // Add Label
@@ -182,6 +210,282 @@ export class World {
         return sprite;
     }
 
+    populateLobby(group, name, config) {
+        // Interior Light
+        const light = new THREE.PointLight(0xffffff, 1.2, 18);
+        light.position.set(0, 5, 0);
+        group.add(light);
+
+        // --- COMMON: ELEVATOR (Visual) ---
+        const elevatorGroup = new THREE.Group();
+        elevatorGroup.position.set(0, 0, -4.8); // Back wall
+        const door = new THREE.Mesh(new THREE.BoxGeometry(2, 2.5, 0.1), new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8 }));
+        door.position.y = 1.25;
+        elevatorGroup.add(door);
+        const lLight = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.1, 0.1), new THREE.MeshBasicMaterial({ color: 0x00FF00 }));
+        lLight.position.set(0, 2.8, 0);
+        elevatorGroup.add(lLight);
+        group.add(elevatorGroup);
+
+        if (name === 'Hospital' || (config.label && config.label.includes('医院'))) {
+            // Reception Desk
+            const deskGroup = new THREE.Group();
+            deskGroup.position.set(0, 0, -2.5);
+            const desk = new THREE.Mesh(new THREE.BoxGeometry(4, 1.2, 1), new THREE.MeshStandardMaterial({ color: 0xFFFFFF }));
+            desk.position.y = 0.6;
+            deskGroup.add(desk);
+            const cross = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 0.1), new THREE.MeshBasicMaterial({ color: 0xFF0000 }));
+            cross.position.set(0, 0.6, 0.6);
+            deskGroup.add(cross);
+
+            deskGroup.userData = { type: 'Reception', action: '咨询/挂号' };
+            this.buildings.push(deskGroup);
+            group.add(deskGroup);
+
+            // Waiting Area
+            for (let x = -4; x <= 4; x += 2) {
+                if (x === 0) continue;
+                const chair = new THREE.Mesh(new THREE.BoxGeometry(1, 0.5, 1), new THREE.MeshStandardMaterial({ color: 0x4682B4 }));
+                chair.position.set(x, 0.25, 2);
+                chair.userData = { type: 'Waiting Chair', action: '等候叫号' };
+                this.buildings.push(chair);
+                group.add(chair);
+            }
+
+        } else if (name === 'Police Station' || (config.label && config.label.includes('警察'))) {
+            // Reception
+            const desk = new THREE.Mesh(new THREE.BoxGeometry(3, 1.2, 1), new THREE.MeshStandardMaterial({ color: 0x000080 }));
+            desk.position.set(0, 0.6, -2.5);
+            desk.userData = { type: 'Police Desk', action: '报案/登记' };
+            this.buildings.push(desk);
+            group.add(desk);
+
+        } else if (name === 'Bank' || (config.label && config.label.includes('银行'))) {
+            // Teller Windows
+            const partition = new THREE.Mesh(new THREE.BoxGeometry(8, 2.5, 0.1), new THREE.MeshStandardMaterial({ color: 0x88CCFF, transparent: true, opacity: 0.3 }));
+            partition.position.set(0, 1.25, -2);
+            group.add(partition);
+            const tellerCounter = new THREE.Mesh(new THREE.BoxGeometry(8, 1, 1), new THREE.MeshStandardMaterial({ color: 0xD3D3D3 }));
+            tellerCounter.position.set(0, 0.5, -2.5);
+            tellerCounter.userData = { type: 'Bank Counter', action: '办理业务' };
+            this.buildings.push(tellerCounter);
+            group.add(tellerCounter);
+
+        } else if (name === 'Club' || (config.label && config.label.includes('夜店'))) {
+            // Dance Floor & DJ
+            const danceFloor = new THREE.Mesh(new THREE.BoxGeometry(6, 0.1, 6), new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.1 }));
+            danceFloor.position.set(0, 0.05, 0);
+            danceFloor.userData = { type: 'Dance Floor', action: '跳舞' };
+            this.buildings.push(danceFloor);
+            group.add(danceFloor);
+
+            const dj = new THREE.Mesh(new THREE.BoxGeometry(2, 1.2, 1), new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0x550055 }));
+            dj.position.set(0, 0.6, -3);
+            dj.userData = { type: 'DJ Booth', action: '打碟' };
+            this.buildings.push(dj);
+            group.add(dj);
+
+            const discoLight = new THREE.PointLight(0xFF00FF, 3, 12);
+            discoLight.position.set(0, 5, 0);
+            group.add(discoLight);
+
+        } else if (name.includes('Hotel') || (config.label && config.label.includes('酒店'))) {
+            // Lounge & Reception
+            const sofa = new THREE.Mesh(new THREE.BoxGeometry(3, 0.6, 1.5), new THREE.MeshStandardMaterial({ color: 0x8B4513 }));
+            sofa.position.set(-3, 0.3, 0);
+            sofa.userData = { type: 'Lobby Sofa', action: '休息' };
+            this.buildings.push(sofa);
+            group.add(sofa);
+
+            const desk = new THREE.Mesh(new THREE.BoxGeometry(3, 1.2, 1), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+            desk.position.set(0, 0.6, -3);
+            desk.userData = { type: 'Check-in Desk', action: '办理入住' };
+            this.buildings.push(desk);
+            group.add(desk);
+
+            // Decorative Plants
+            const plantPot = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.4, 0.8), new THREE.MeshStandardMaterial({ color: 0x8B4513 }));
+            plantPot.position.set(3, 0.4, 0);
+            group.add(plantPot);
+            const plant = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.5, 8), new THREE.MeshStandardMaterial({ color: 0x228B22 }));
+            plant.position.set(3, 1.2, 0);
+            group.add(plant);
+        } else {
+            // General Office Lobby
+            const desk = new THREE.Mesh(new THREE.BoxGeometry(3, 1.2, 1), new THREE.MeshStandardMaterial({ color: 0x555555 }));
+            desk.position.set(0, 0.6, -2);
+            desk.userData = { type: 'Front Desk', action: '访客登记' };
+            this.buildings.push(desk);
+            group.add(desk);
+
+            const plant1 = new THREE.Mesh(new THREE.ConeGeometry(0.5, 2, 8), new THREE.MeshStandardMaterial({ color: 0x228B22 }));
+            plant1.position.set(-3, 1, 3);
+            group.add(plant1);
+            const plant2 = plant1.clone();
+            plant2.position.set(3, 1, 3);
+            group.add(plant2);
+        }
+    }
+
+    populateStoreInterior(group, name, config) {
+        // Add Interior Light
+        const light = new THREE.PointLight(0xffaa00, 1.5, 10);
+        light.position.set(0, 4, 0);
+        group.add(light);
+
+        // Counter (Generic for most stores)
+        const counterMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee });
+        const counter = new THREE.Mesh(new THREE.BoxGeometry(3, 1.2, 1), counterMat);
+        counter.position.set(-2, 0.6, -2);
+        group.add(counter);
+
+        // Register Counter
+        const counterGroup = new THREE.Group();
+        counterGroup.position.copy(counter.position);
+        counterGroup.userData = { type: 'Counter', action: '结账/咨询' };
+        this.buildings.push(counterGroup); // Allow interaction near counter
+
+        if (name === 'Gym' || (config.label && config.label.includes('健身'))) {
+            // Enhanced Gym
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x111111 }); // Rubber floor
+            const jimFloor = new THREE.Mesh(new THREE.BoxGeometry(11, 0.1, 11), groundMat);
+            jimFloor.position.y = 0.05;
+            group.add(jimFloor);
+
+            // Treadmills
+            for (let i = 0; i < 2; i++) {
+                const treadmill = new THREE.Group();
+                treadmill.position.set(2.5, 0, 1 + i * 3);
+                treadmill.add(new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.2, 2.5), new THREE.MeshStandardMaterial({ color: 0x222222 })));
+                const console = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.5, 0.2), new THREE.MeshStandardMaterial({ color: 0x444444 }));
+                console.position.set(0, 0.75, 1.1); treadmill.add(console);
+                treadmill.userData = { type: 'Treadmill', action: '基础训练 (跑步)' };
+                this.buildings.push(treadmill); group.add(treadmill);
+            }
+
+            // Yoga Mats
+            for (let i = 0; i < 2; i++) {
+                const mat = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.05, 3), new THREE.MeshStandardMaterial({ color: i % 2 === 0 ? 0x9C27B0 : 0x03A9F4 }));
+                mat.position.set(-3.5, 0.1, 1 + i * 3.5);
+                mat.userData = { type: 'Yoga Mat', action: '拉伸/冥想' };
+                this.buildings.push(mat); group.add(mat);
+            }
+
+            // Punching Bag
+            const bagGroup = new THREE.Group(); bagGroup.position.set(-1, 0, 4);
+            const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.5), new THREE.MeshStandardMaterial({ color: 0x888888 }));
+            chain.position.y = 3.5; bagGroup.add(chain);
+            const bag = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 2), new THREE.MeshStandardMaterial({ color: 0x8B0000 }));
+            bag.position.y = 2; bagGroup.add(bag);
+            bagGroup.userData = { type: 'Punching Bag', action: '格斗训练' };
+            this.buildings.push(bagGroup); group.add(bagGroup);
+
+        } else if (config.label && config.label.includes('披萨')) {
+            // Pizza Shop: Ovens & Prep
+            group.add(new THREE.Mesh(new THREE.BoxGeometry(11, 0.1, 11), new THREE.MeshStandardMaterial({ color: 0xf5f5dc }))); // Beige floor
+
+            // Stone Oven
+            const oven = new THREE.Group(); oven.position.set(-4, 0, -3.5);
+            const body = new THREE.Mesh(new THREE.BoxGeometry(3, 2.5, 3), new THREE.MeshStandardMaterial({ color: 0x8B4513 }));
+            body.position.y = 1.25; oven.add(body);
+            const hole = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.8, 0.5), new THREE.MeshBasicMaterial({ color: 0xFF4500 }));
+            hole.position.set(0, 1.2, 1.3); oven.add(hole); // Glowing hole
+            oven.userData = { type: 'Pizza Oven', action: '烘烤披萨' };
+            this.buildings.push(oven); group.add(oven);
+
+            // Prep Table
+            const table = new THREE.Mesh(new THREE.BoxGeometry(4, 1.2, 2), new THREE.MeshStandardMaterial({ color: 0xFFFFFF }));
+            table.position.set(0, 0.6, -3);
+            const dough = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.05), new THREE.MeshStandardMaterial({ color: 0xFFFFE0 }));
+            dough.position.set(0, 1.25, -3); group.add(dough);
+            table.userData = { type: 'Prep Table', action: '制作面团' };
+            this.buildings.push(table); group.add(table);
+
+        } else if (name === 'Cinema' || (config.label && config.label.includes('电影'))) {
+            // Cinema: Screen & Seats
+            const screen = new THREE.Mesh(new THREE.PlaneGeometry(8, 4), new THREE.MeshBasicMaterial({ color: 0x000000 }));
+            screen.position.set(0, 2.5, -5.5);
+            group.add(screen);
+
+            // Popcorn Stand
+            const stand = new THREE.Mesh(new THREE.BoxGeometry(2, 1.2, 1), new THREE.MeshStandardMaterial({ color: 0xFFFF00 }));
+            stand.position.set(3, 0.6, -2);
+            stand.userData = { type: 'Popcorn Stand', action: '购买爆米花' };
+            this.buildings.push(stand);
+            group.add(stand);
+
+            // Ticket Kiosk
+            const kiosk = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.5, 0.5), new THREE.MeshStandardMaterial({ color: 0xFF0000 }));
+            kiosk.position.set(-4, 0.75, 0);
+            kiosk.userData = { type: 'Ticket Kiosk', action: '取票/购票' };
+            this.buildings.push(kiosk);
+            group.add(kiosk);
+
+        } else if (config.label && (config.label.includes('服装') || config.label.includes('Clothing'))) {
+            // Clothing Store: Racks
+            for (let x = -3; x <= 3; x += 3) {
+                const rack = new THREE.Group();
+                rack.position.set(x, 0, 1);
+                const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3), new THREE.MeshStandardMaterial({ color: 0x888888 }));
+                rail.rotation.z = Math.PI / 2;
+                rail.position.y = 1.5;
+                rack.add(rail);
+                const leg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.5), new THREE.MeshStandardMaterial({ color: 0x888888 }));
+                leg1.position.set(-1.4, 0.75, 0); rack.add(leg1);
+                const leg2 = leg1.clone(); leg2.position.set(1.4, 0.75, 0); rack.add(leg2);
+
+                rack.userData = { type: 'Clothes Rack', action: '试穿/购买' };
+                this.buildings.push(rack);
+                group.add(rack);
+            }
+
+        } else if (config.label && (config.label.includes('书店') || config.label.includes('Book'))) {
+            // Bookstore: Rows of shelves
+            for (let z = -3; z <= 3; z += 3) {
+                const shelf = new THREE.Mesh(new THREE.BoxGeometry(8, 3, 0.5), new THREE.MeshStandardMaterial({ color: 0x5C4033 }));
+                shelf.position.set(0, 1.5, z);
+                shelf.userData = { type: 'Bookshelf', action: '阅读/买书' };
+                this.buildings.push(shelf);
+                group.add(shelf);
+            }
+
+        } else if (config.label && (
+            config.label.includes('餐') || config.label.includes('店') || config.label.includes('Cafe') || config.label.includes('Bar') || config.label.includes('Coffee') ||
+            config.label.includes('面包') || config.label.includes('冰淇淋') || config.label.includes('汉堡') || config.label.includes('寿司')
+        )) {
+            // Tables and Chairs with better spacing
+            const tableMat = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            for (let x = -3; x <= 3; x += 6) {
+                for (let z = -2; z <= 4; z += 3) {
+                    const tableGroup = new THREE.Group();
+                    tableGroup.position.set(x, 0, z);
+                    const tableTop = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.1, 16), tableMat);
+                    tableTop.position.y = 1; tableGroup.add(tableTop);
+                    const tableLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1, 8), new THREE.MeshStandardMaterial({ color: 0x000000 }));
+                    tableLeg.position.y = 0.5; tableGroup.add(tableLeg);
+                    tableGroup.userData = { type: 'Table', action: '用餐/休息' };
+                    this.buildings.push(tableGroup);
+                    group.add(tableGroup);
+                }
+            }
+        } else if (config.label && (config.label.includes('超市') || config.label.includes('Store') || config.label.includes('Market'))) {
+            // Improved Shelves
+            for (let x = -3; x <= 3; x += 3) {
+                const shelf = new THREE.Group();
+                shelf.position.set(x, 0, -2);
+                const frame = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.5, 4), new THREE.MeshStandardMaterial({ color: 0xe0e0e0 }));
+                frame.position.y = 1.25; shelf.add(frame);
+                for (let i = 0; i < 8; i++) {
+                    const prod = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 0.25), new THREE.MeshStandardMaterial({ color: Math.random() * 0xffffff }));
+                    prod.position.set(0.4, 0.4 + i * 0.3, (Math.random() - 0.5) * 3); shelf.add(prod);
+                }
+                shelf.userData = { type: 'Shelf', action: '挑选商品' };
+                this.buildings.push(shelf);
+                group.add(shelf);
+            }
+        }
+    }
+
     createGenericBuilding(config) {
         const group = new THREE.Group();
         const scale = config.scale || 1;
@@ -195,59 +499,180 @@ export class World {
         const style = config.style || 'modern';
 
         if (style === 'store') {
-            // STORE: Box with Glass Window + Awning
-            const width = 10 * scale;
-            const height = 6 * scale;
-            const depth = 10 * scale;
+            // ENHANCED STORE: Hollow, accessible interior
+            const width = 12 * scale;
+            const height = 5 * scale;
+            const depth = 12 * scale;
+            const thickness = 0.5;
 
-            const base = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), baseMat);
-            base.position.y = height / 2;
-            base.castShadow = true;
-            group.add(base);
+            // Materials
+            const wallMat = baseMat;
+            const floorMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.8 });
+            const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xdddddd });
 
-            // Glass Window
-            const glass = new THREE.Mesh(new THREE.PlaneGeometry(width - 2, height - 2), new THREE.MeshStandardMaterial({ color: 0x88CCFF, roughness: 0.1, metalness: 0.9 }));
-            glass.position.set(0, height / 2, depth / 2 + 0.1);
-            group.add(glass);
+            // Floor
+            const floor = new THREE.Mesh(new THREE.BoxGeometry(width, 0.2, depth), floorMat);
+            floor.position.y = 0.1;
+            floor.receiveShadow = true;
+            group.add(floor);
+
+            // Ceiling
+            const ceiling = new THREE.Mesh(new THREE.BoxGeometry(width, 0.2, depth), ceilingMat);
+            ceiling.position.y = height;
+            ceiling.castShadow = true;
+            group.add(ceiling);
+
+            // Walls
+            // Back
+            const backWall = new THREE.Mesh(new THREE.BoxGeometry(width, height, thickness), wallMat);
+            backWall.position.set(0, height / 2, -depth / 2 + thickness / 2);
+            backWall.castShadow = true;
+            group.add(backWall);
+
+            // Left
+            const leftWall = new THREE.Mesh(new THREE.BoxGeometry(thickness, height, depth), wallMat);
+            leftWall.position.set(-width / 2 + thickness / 2, height / 2, 0);
+            leftWall.castShadow = true;
+            group.add(leftWall);
+
+            // Right
+            const rightWall = new THREE.Mesh(new THREE.BoxGeometry(thickness, height, depth), wallMat);
+            rightWall.position.set(width / 2 - thickness / 2, height / 2, 0);
+            rightWall.castShadow = true;
+            group.add(rightWall);
+
+            // Front (Open Storefront with pillars)
+            const pillarWidth = 1.0;
+            const leftPillar = new THREE.Mesh(new THREE.BoxGeometry(pillarWidth, height, thickness), wallMat);
+            leftPillar.position.set(-width / 2 + pillarWidth / 2, height / 2, depth / 2 - thickness / 2);
+            group.add(leftPillar);
+
+            const rightPillar = new THREE.Mesh(new THREE.BoxGeometry(pillarWidth, height, thickness), wallMat);
+            rightPillar.position.set(width / 2 - pillarWidth / 2, height / 2, depth / 2 - thickness / 2);
+            group.add(rightPillar);
+
+            // Top Beam
+            const topBeam = new THREE.Mesh(new THREE.BoxGeometry(width, 1, thickness), wallMat);
+            topBeam.position.set(0, height - 0.5, depth / 2 - thickness / 2);
+            group.add(topBeam);
+
+            // Glass Windows (Large, transparent)
+            const glassMat = new THREE.MeshStandardMaterial({ color: 0x88CCFF, transparent: true, opacity: 0.3, metalness: 0.9, roughness: 0.1 });
+            const windowPane = new THREE.Mesh(new THREE.PlaneGeometry(width - pillarWidth * 2, height - 1), glassMat);
+            windowPane.position.set(0, (height - 1) / 2, depth / 2);
+            // Open door? No, just glass for now, maybe phantom.
+            // Let's make it open: 2 panes with gap.
+            // Left Pane
+            const paneWidth = (width - pillarWidth * 2 - 2) / 2; // 2 unit door gap
+            const leftPane = new THREE.Mesh(new THREE.BoxGeometry(paneWidth, height - 1, 0.1), glassMat);
+            leftPane.position.set(-(width / 2 - pillarWidth - paneWidth / 2), (height - 1) / 2, depth / 2);
+            group.add(leftPane);
+
+            const rightPane = new THREE.Mesh(new THREE.BoxGeometry(paneWidth, height - 1, 0.1), glassMat);
+            rightPane.position.set((width / 2 - pillarWidth - paneWidth / 2), (height - 1) / 2, depth / 2);
+            group.add(rightPane);
 
             // Awning
             const awningColor = config.awningColor || 0xFF0000;
-            const awning = new THREE.Mesh(new THREE.BoxGeometry(width, 0.5, 3), new THREE.MeshStandardMaterial({ color: awningColor }));
+            const awning = new THREE.Mesh(new THREE.BoxGeometry(width, 0.5, 3), new THREE.MeshStandardMaterial({ color: awningColor, side: THREE.DoubleSide }));
             awning.position.set(0, height - 1.5, depth / 2 + 1.5);
-            awning.rotation.x = 0.5;
+            awning.rotation.x = 0.5; // Tilted down
             group.add(awning);
 
+            // Signage
+            // Use config.label or name
+            // (Label is usually sprite above, but maybe a sign board on awning?)
+
+            // Interior Population
+            this.populateStoreInterior(group, config.name, config);
+
         } else if (style === 'modern') {
-            // MODERN: Tall Glass Tower
+            // MODERN: Tall Tower with Accessible Lobby
             const width = 10 * scale;
-            const height = 14 * scale;
+            const lobbyHeight = 6;
+            const towerHeight = (14 * scale) - lobbyHeight; // Remaining height
             const depth = 10 * scale;
+            const thickness = 0.5;
 
-            const base = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), baseMat);
-            base.position.y = height / 2;
-            base.castShadow = true;
-            group.add(base);
+            // --- LOBBY (Accessible) ---
+            const lobbyMat = baseMat;
+            const floorMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.5 });
 
-            // Vertical Glass Strips
-            const glassMat = new THREE.MeshStandardMaterial({ color: 0xADD8E6, emissive: 0x111111 });
+            // Floor
+            const floor = new THREE.Mesh(new THREE.BoxGeometry(width, 0.2, depth), floorMat);
+            floor.position.y = 0.1;
+            floor.receiveShadow = true;
+            group.add(floor);
+
+            // Ceiling (Base of Tower)
+            const ceiling = new THREE.Mesh(new THREE.BoxGeometry(width, 0.5, depth), lobbyMat);
+            ceiling.position.y = lobbyHeight;
+            group.add(ceiling);
+
+            // Walls (Back, Left, Right)
+            const backWall = new THREE.Mesh(new THREE.BoxGeometry(width, lobbyHeight, thickness), lobbyMat);
+            backWall.position.set(0, lobbyHeight / 2, -depth / 2 + thickness / 2);
+            group.add(backWall);
+
+            const leftWall = new THREE.Mesh(new THREE.BoxGeometry(thickness, lobbyHeight, depth), lobbyMat);
+            leftWall.position.set(-width / 2 + thickness / 2, lobbyHeight / 2, 0);
+            group.add(leftWall);
+
+            const rightWall = new THREE.Mesh(new THREE.BoxGeometry(thickness, lobbyHeight, depth), lobbyMat);
+            rightWall.position.set(width / 2 - thickness / 2, lobbyHeight / 2, 0);
+            group.add(rightWall);
+
+            // Front Columns (Open Logic)
+            const colWidth = 1;
+            const leftCol = new THREE.Mesh(new THREE.BoxGeometry(colWidth, lobbyHeight, thickness), lobbyMat);
+            leftCol.position.set(-width / 2 + colWidth / 2, lobbyHeight / 2, depth / 2 - thickness / 2);
+            group.add(leftCol);
+
+            const rightCol = new THREE.Mesh(new THREE.BoxGeometry(colWidth, lobbyHeight, thickness), lobbyMat);
+            rightCol.position.set(width / 2 - colWidth / 2, lobbyHeight / 2, depth / 2 - thickness / 2);
+            group.add(rightCol);
+
+            // Glass Wall (Back of Lobby or Panels)
+            const glassMat = new THREE.MeshStandardMaterial({ color: 0xADD8E6, transparent: true, opacity: 0.4 });
+            const glass = new THREE.Mesh(new THREE.BoxGeometry(width - 4, lobbyHeight, 0.1), glassMat);
+            glass.position.set(0, lobbyHeight / 2, depth / 2 - thickness);
+            // Actually let's make it OPEN for entry. Use phantom glass? 
+            // Or just side windows.
+            // Let's leave center open.
+
+            // --- TOWER (Solid Top) ---
+            const towerGeo = new THREE.BoxGeometry(width, towerHeight, depth);
+            const tower = new THREE.Mesh(towerGeo, baseMat);
+            tower.position.y = lobbyHeight + towerHeight / 2;
+            tower.castShadow = true;
+            group.add(tower);
+
+            // Vertical Glass Strips on Tower
+            const stripMat = new THREE.MeshStandardMaterial({ color: 0xADD8E6, emissive: 0x111111 });
             for (let i = -1; i <= 1; i += 2) {
-                const strip = new THREE.Mesh(new THREE.BoxGeometry(2, height, depth + 0.1), glassMat);
-                strip.position.set(i * 3, height / 2, 0);
+                const strip = new THREE.Mesh(new THREE.BoxGeometry(2, towerHeight, depth + 0.2), stripMat);
+                strip.position.set(i * 3, lobbyHeight + towerHeight / 2, 0);
                 group.add(strip);
             }
+
+            // Populate Lobby
+            this.populateLobby(group, config.name, config);
+
+            // Markings
             if (config.mark === 'helipad') {
-                // Helipad
                 const hGeo = new THREE.CircleGeometry(4, 32);
                 const hMat = new THREE.MeshBasicMaterial({ color: 0xFF0000 });
                 const h = new THREE.Mesh(hGeo, hMat);
                 h.rotation.x = -Math.PI / 2;
-                h.position.set(0, height + 0.1, 0);
+                h.position.set(0, lobbyHeight + towerHeight + 0.1, 0);
                 group.add(h);
+                // H text logic... (Skipping detail for brevity or keeping it?)
+                // Keeping it is better visual.
                 const hText = new THREE.Mesh(new THREE.BoxGeometry(4, 0.2, 1), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-                hText.position.set(0, height + 0.2, 0);
+                hText.position.set(0, lobbyHeight + towerHeight + 0.2, 0);
                 group.add(hText);
                 const hText2 = new THREE.Mesh(new THREE.BoxGeometry(1, 0.2, 4), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-                hText2.position.set(0, height + 0.2, 0);
+                hText2.position.set(0, lobbyHeight + towerHeight + 0.2, 0);
                 group.add(hText2);
             }
 
@@ -688,92 +1113,286 @@ export class World {
         group.add(mesh);
         return group;
     }
-
-    createHouse() {
+    createHouse(config = {}) {
         const group = new THREE.Group();
-        const wallMat = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // Brown
+        const name = config.name || '';
+
+        // Procedural Variations
+        let wallColor = 0xf5f5f5;
+        let floorColor = 0x8d6e63;
+        let roofColor = 0x424242;
+        let hasBalcony = name.includes('B') || name.includes('My');
+        let style = 'modern';
+
+        if (name.includes('Neighbor A')) {
+            wallColor = 0xFFF9C4; // Soft Yellow
+            floorColor = 0x795548;
+        } else if (name.includes('Neighbor B')) {
+            wallColor = 0xE8F5E9; // Soft Green
+            floorColor = 0x5D4037;
+        } else if (name.includes('Neighbor C')) {
+            wallColor = 0xFFFFFF; // Pure White
+            floorColor = 0x3e2723;
+        }
+
+        // Materials (Bright & Realistic)
+        const wallMat = new THREE.MeshStandardMaterial({
+            color: wallColor,
+            roughness: 0.8
+        });
+        const floorMat = new THREE.MeshStandardMaterial({
+            color: floorColor,
+            roughness: 0.6
+        });
+        const roofMat = new THREE.MeshStandardMaterial({
+            color: roofColor,
+            roughness: 0.9
+        });
+        const glassMat = new THREE.MeshStandardMaterial({
+            color: 0x88ccff,
+            transparent: true,
+            opacity: 0.4,
+            metalness: 0.9,
+            roughness: 0.1
+        });
+        const frameMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+
+        // Dimensions
+        const width = 12;
+        const depth = 12;
+        const height = 4;
+        const thickness = 0.3;
+
+        // Concrete Base/Foundation to avoid "floating"
+        const base = new THREE.Mesh(new THREE.BoxGeometry(width + 4, 0.2, depth + 4), new THREE.MeshStandardMaterial({ color: 0x999999 }));
+        base.position.y = 0.1;
+        group.add(base);
 
         // Floor
-        const floor = new THREE.Mesh(new THREE.BoxGeometry(10, 0.2, 10), new THREE.MeshStandardMaterial({ color: 0xdeb887 })); // Wood
-        floor.position.y = 0.1;
+        const floor = new THREE.Mesh(new THREE.BoxGeometry(width, 0.2, depth), floorMat);
+        floor.position.y = 0.2; // Slightly above base
         floor.receiveShadow = true;
         group.add(floor);
 
+        // Ceiling/Roof
+        const roofHeight = style === 'modern' ? 0.3 : 2;
+        const roofGeo = style === 'modern' ?
+            new THREE.BoxGeometry(width + 1, roofHeight, depth + 1) :
+            new THREE.ConeGeometry(9, roofHeight, 4);
+
+        const roof = new THREE.Mesh(roofGeo, roofMat);
+        roof.position.y = height + (style === 'classic' ? roofHeight / 2 : 0);
+        if (style === 'classic') roof.rotation.y = Math.PI / 4;
+        roof.castShadow = true;
+        group.add(roof);
+
+        // Balcony logic
+        if (hasBalcony) {
+            const bMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
+            const bFloor = new THREE.Mesh(new THREE.BoxGeometry(width, 0.2, 3), floorMat);
+            bFloor.position.set(0, height - 1, depth / 2 + 1.5);
+            group.add(bFloor);
+            const bRail = new THREE.Mesh(new THREE.BoxGeometry(width, 1, 0.1), bMat);
+            bRail.position.set(0, height - 0.5, depth / 2 + 3);
+            group.add(bRail);
+        }
+
         // Walls
-        const backWall = new THREE.Mesh(new THREE.BoxGeometry(10, 8, 0.5), wallMat);
-        backWall.position.set(0, 4, -4.75);
+        // Back Wall (Solid)
+        const backWall = new THREE.Mesh(new THREE.BoxGeometry(width, height, thickness), wallMat);
+        backWall.position.set(0, height / 2, -depth / 2 + thickness / 2);
         backWall.castShadow = true;
         backWall.receiveShadow = true;
         group.add(backWall);
 
-        const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.5, 8, 10), wallMat);
-        leftWall.position.set(-4.75, 4, 0);
-        leftWall.castShadow = true;
-        leftWall.receiveShadow = true;
-        group.add(leftWall);
-
-        const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.5, 8, 10), wallMat);
-        rightWall.position.set(4.75, 4, 0);
+        // Right Wall (Solid)
+        const rightWall = new THREE.Mesh(new THREE.BoxGeometry(thickness, height, depth), wallMat);
+        rightWall.position.set(width / 2 - thickness / 2, height / 2, 0);
         rightWall.castShadow = true;
         rightWall.receiveShadow = true;
         group.add(rightWall);
 
-        // Front Walls (Door Gap)
-        const frontLeft = new THREE.Mesh(new THREE.BoxGeometry(3.5, 8, 0.5), wallMat);
-        frontLeft.position.set(-3.25, 4, 4.75);
+        // Left Wall (With Large Window)
+        // Split into parts to make window hole
+        const windowWidth = 6;
+        const windowHeight = 2.5;
+        const leftWallZ1 = (depth - windowWidth) / 2; // Solid parts
+
+        const leftWall1 = new THREE.Mesh(new THREE.BoxGeometry(thickness, height, (depth - windowWidth) / 2), wallMat);
+        leftWall1.position.set(-width / 2 + thickness / 2, height / 2, -depth / 2 + (depth - windowWidth) / 4);
+        leftWall1.castShadow = true;
+        group.add(leftWall1);
+
+        const leftWall2 = new THREE.Mesh(new THREE.BoxGeometry(thickness, height, (depth - windowWidth) / 2), wallMat);
+        leftWall2.position.set(-width / 2 + thickness / 2, height / 2, depth / 2 - (depth - windowWidth) / 4);
+        leftWall2.castShadow = true;
+        group.add(leftWall2);
+
+        // Window beams (Top/Bottom)
+        const winTop = new THREE.Mesh(new THREE.BoxGeometry(thickness, (height - windowHeight) / 2, windowWidth), wallMat);
+        winTop.position.set(-width / 2 + thickness / 2, height - (height - windowHeight) / 4, 0);
+        group.add(winTop);
+
+        const winBottom = new THREE.Mesh(new THREE.BoxGeometry(thickness, (height - windowHeight) / 2, windowWidth), wallMat);
+        winBottom.position.set(-width / 2 + thickness / 2, (height - windowHeight) / 4, 0);
+        group.add(winBottom);
+
+        // Window Glass
+        const glass = new THREE.Mesh(new THREE.BoxGeometry(0.1, windowHeight, windowWidth), glassMat);
+        glass.position.set(-width / 2 + thickness / 2, height / 2, 0);
+        group.add(glass);
+
+        // Front Wall (With Door)
+        const doorWidth = 2.5;
+        const doorHeight = 3;
+
+        // Left of door
+        const frontLeft = new THREE.Mesh(new THREE.BoxGeometry(width / 2 - doorWidth / 2, height, thickness), wallMat);
+        frontLeft.position.set(-(width / 2 + doorWidth / 2) / 2, height / 2, depth / 2 - thickness / 2);
         frontLeft.castShadow = true;
         group.add(frontLeft);
 
-        const frontRight = new THREE.Mesh(new THREE.BoxGeometry(3.5, 8, 0.5), wallMat);
-        frontRight.position.set(3.25, 4, 4.75);
+        // Right of door
+        const frontRight = new THREE.Mesh(new THREE.BoxGeometry(width / 2 - doorWidth / 2, height, thickness), wallMat);
+        frontRight.position.set((width / 2 + doorWidth / 2) / 2, height / 2, depth / 2 - thickness / 2);
         frontRight.castShadow = true;
         group.add(frontRight);
 
-        const doorHeader = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 0.5), wallMat);
-        doorHeader.position.set(0, 7, 4.75);
-        doorHeader.castShadow = true;
+        // Top of door
+        const doorHeader = new THREE.Mesh(new THREE.BoxGeometry(doorWidth, height - doorHeight, thickness), wallMat);
+        doorHeader.position.set(0, height - (height - doorHeight) / 2, depth / 2 - thickness / 2);
         group.add(doorHeader);
 
-        // Roof
-        const roofGeo = new THREE.ConeGeometry(9, 4, 4);
-        const roofMat = new THREE.MeshStandardMaterial({ color: 0xA52A2A }); // Dark Red
-        const roof = new THREE.Mesh(roofGeo, roofMat);
-        roof.position.y = 10;
-        roof.rotation.y = Math.PI / 4;
-        roof.castShadow = true;
-        group.add(roof);
+        // Door (Openable look, but static for now)
+        const door = new THREE.Mesh(new THREE.BoxGeometry(doorWidth, doorHeight, thickness - 0.05), new THREE.MeshStandardMaterial({ color: 0x5d4037 })); // Dark Wood
+        door.position.set(0, doorHeight / 2, depth / 2 - thickness / 2);
+        group.add(door);
 
-        // Interior: Bed
-        const bedFrame = new THREE.Mesh(new THREE.BoxGeometry(3, 1, 5), new THREE.MeshStandardMaterial({ color: 0x555555 }));
-        bedFrame.position.set(0, 0.6, -2);
+        // Door Handle
+        const handle = new THREE.Mesh(new THREE.SphereGeometry(0.1), new THREE.MeshStandardMaterial({ color: 0xFFD700, metalness: 1, roughness: 0.2 }));
+        handle.position.set(0.8, doorHeight / 2, depth / 2 + 0.1);
+        group.add(handle);
+
+
+        // Interior Setup
+        // Bed
+        const bedFrame = new THREE.Mesh(new THREE.BoxGeometry(3, 0.8, 5), new THREE.MeshStandardMaterial({ color: 0x555555 }));
+        bedFrame.position.set(-3, 0.5, -3);
+        bedFrame.userData = { type: 'Bed', action: '睡觉 (恢复精力)' };
+        this.buildings.push(bedFrame); // Register for interaction
         group.add(bedFrame);
 
-        const mattress = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.5, 4.8), new THREE.MeshStandardMaterial({ color: 0xFFFFFF }));
-        mattress.position.set(0, 1.1, -2);
+        const mattress = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.4, 4.8), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+        mattress.position.set(-3, 1.0, -3);
         group.add(mattress);
-
-        const pillow = new THREE.Mesh(new THREE.BoxGeometry(2, 0.3, 1), new THREE.MeshStandardMaterial({ color: 0xEEEEEE }));
-        pillow.position.set(0, 1.4, -4);
+        const pillow = new THREE.Mesh(new THREE.BoxGeometry(2, 0.3, 1), new THREE.MeshStandardMaterial({ color: 0xeeeeee }));
+        pillow.position.set(-3, 1.3, -4.5);
         group.add(pillow);
 
-        // Shower Stall (Visual)
-        const shower = new THREE.Group();
-        shower.position.set(3.5, 0, -3.5); // Corner
+        // Desk
+        const deskGroup = new THREE.Group();
+        deskGroup.position.set(3, 0, 3);
+        const desk = new THREE.Mesh(new THREE.BoxGeometry(4, 0.1, 2), new THREE.MeshStandardMaterial({ color: 0x8d6e63 }));
+        desk.position.y = 1.5;
+        deskGroup.add(desk);
+        const leg1 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.5, 0.2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+        leg1.position.set(-1.9, 0.75, 0.9);
+        deskGroup.add(leg1);
+        const leg2 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.5, 0.2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+        leg2.position.set(1.9, 0.75, 0.9);
+        deskGroup.add(leg2);
 
-        const sBase = new THREE.Mesh(new THREE.BoxGeometry(2, 0.1, 2), new THREE.MeshStandardMaterial({ color: 0xFFFFFF }));
+        // Chair
+        const chair = new THREE.Mesh(new THREE.BoxGeometry(1, 0.1, 1), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+        chair.position.set(0, 0.8, 1.5);
+        deskGroup.add(chair);
+        const chairBack = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 0.1), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+        chairBack.position.set(0, 1.3, 2);
+        deskGroup.add(chairBack);
+
+        // Laptop
+        const laptopBase = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.5), new THREE.MeshStandardMaterial({ color: 0xcccccc }));
+        laptopBase.position.set(0, 1.55, 0);
+        deskGroup.add(laptopBase);
+        const laptopScreen = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.05), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+        laptopScreen.position.set(0, 1.8, -0.25);
+        laptopScreen.rotation.x = -0.2;
+        deskGroup.add(laptopScreen);
+
+        deskGroup.userData = { type: 'Desk', action: '工作 (赚钱)' };
+        this.buildings.push(deskGroup); // Register interaction
+        group.add(deskGroup);
+
+        // Kitchen Area
+        const kitchenGroup = new THREE.Group();
+        kitchenGroup.position.set(-3, 0, 3);
+
+        // Fridge
+        const fridge = new THREE.Mesh(new THREE.BoxGeometry(1.5, 3, 1.5), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2, metalness: 0.5 }));
+        fridge.position.set(-1, 1.5, 1);
+        kitchenGroup.add(fridge);
+
+        // Counter
+        const counter = new THREE.Mesh(new THREE.BoxGeometry(3, 1.5, 1.5), new THREE.MeshStandardMaterial({ color: 0xeeeeee }));
+        counter.position.set(1.5, 0.75, 1);
+        kitchenGroup.add(counter);
+
+        // Stove
+        const stove = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.6, 1.5), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+        stove.position.set(1.5, 0.75, 1); // Merge with counter visually? Or replace part.
+        // Let's just put it on top? No, built-in.
+        kitchenGroup.add(stove);
+
+        kitchenGroup.userData = { type: 'Kitchen', action: '做饭/吃饭 (恢复饥饿)' };
+        this.buildings.push(kitchenGroup);
+        group.add(kitchenGroup);
+
+        // Living Area
+        const livingGroup = new THREE.Group();
+        livingGroup.position.set(0, 0, 0);
+
+        // Sofa
+        const sofa = new THREE.Group();
+        sofa.position.set(0, 0, 0); // Center room?
+        const sofaBase = new THREE.Mesh(new THREE.BoxGeometry(4, 0.8, 1.5), new THREE.MeshStandardMaterial({ color: 0x8d6e63 })); // Leather
+        sofaBase.position.y = 0.4;
+        sofa.add(sofaBase);
+        const sofaBack = new THREE.Mesh(new THREE.BoxGeometry(4, 1.5, 0.5), new THREE.MeshStandardMaterial({ color: 0x8d6e63 }));
+        sofaBack.position.set(0, 0.75, -0.5);
+        sofa.add(sofaBack);
+
+        livingGroup.add(sofa);
+        livingGroup.position.set(0, 0, 0); // Re-adjust
+        // Move sofa to side
+        sofa.position.set(0, 0, -1);
+
+        // TV Stand & TV
+        const tvStand = new THREE.Mesh(new THREE.BoxGeometry(3, 0.6, 1), new THREE.MeshStandardMaterial({ color: 0x444444 }));
+        tvStand.position.set(0, 0.3, 2);
+        livingGroup.add(tvStand);
+
+        const tv = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.5, 0.1), new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.1 }));
+        tv.position.set(0, 1.4, 2);
+        livingGroup.add(tv);
+
+        sofa.userData = { type: 'Sofa', action: '看电视/休息 (恢复心情)' };
+        this.buildings.push(sofa); // Interactive Sofa
+        group.add(livingGroup);
+
+        // Shower Stall (Visual) - Restored
+        const shower = new THREE.Group();
+        shower.position.set(3.5, 0.1, -3.5); // Corner
+
+        const sBase = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.1, 2.5), new THREE.MeshStandardMaterial({ color: 0xFFFFFF }));
         sBase.position.y = 0.05;
         shower.add(sBase);
 
-        const sGlass = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.5, 2), new THREE.MeshStandardMaterial({
-            color: 0x88CCFF, transparent: true, opacity: 0.3
-        }));
-        sGlass.position.set(-1, 1.25, 0);
+        const sGlass = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.5, 2.5), glassMat);
+        sGlass.position.set(-1.25, 1.25, 0);
         shower.add(sGlass);
 
-        const sGlassFront = new THREE.Mesh(new THREE.BoxGeometry(2, 2.5, 0.1), new THREE.MeshStandardMaterial({
-            color: 0x88CCFF, transparent: true, opacity: 0.3
-        }));
-        sGlassFront.position.set(0, 1.25, 1);
+        const sGlassFront = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.5, 0.1), glassMat);
+        sGlassFront.position.set(0, 1.25, 1.25);
         shower.add(sGlassFront);
 
         const sHead = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.2, 8), new THREE.MeshStandardMaterial({ color: 0x888888 }));
@@ -781,21 +1400,58 @@ export class World {
         sHead.rotation.x = Math.PI;
         shower.add(sHead);
 
-        // Add water drip for effect?
-        // Maybe later.
-
+        shower.userData = { type: 'Shower', action: '洗澡 (恢复卫生)' };
+        this.buildings.push(shower);
         group.add(shower);
+
+        // Creative Character Props (Uniqueness)
+        if (name.includes('Neighbor A')) {
+            // Gaming Theme
+            const pcCase = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.6, 0.6), new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0x00ffff, emissiveIntensity: 0.5 }));
+            pcCase.position.set(4, 1.8, 3.5);
+            group.add(pcCase);
+            const dualMonitor = new THREE.Mesh(new THREE.BoxGeometry(2, 0.6, 0.05), new THREE.MeshBasicMaterial({ color: 0x111111 }));
+            dualMonitor.position.set(3, 1.8, 2.5);
+            group.add(dualMonitor);
+        } else if (name.includes('Neighbor B')) {
+            // Garden/Plant Theme
+            for (let i = 0; i < 4; i++) {
+                const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.2, 0.4), new THREE.MeshStandardMaterial({ color: 0x8B4513 }));
+                pot.position.set(-4 + i * 2, 0.2, 0);
+                group.add(pot);
+                const leaves = new THREE.Mesh(new THREE.SphereGeometry(0.4), new THREE.MeshStandardMaterial({ color: 0x2E7D32 }));
+                leaves.position.set(-4 + i * 2, 0.6, 0);
+                group.add(leaves);
+            }
+        } else if (name.includes('Neighbor C')) {
+            // Minimalist / Art Theme
+            const easel = new THREE.Group();
+            easel.position.set(3, 0, -2);
+            const frame = new THREE.Mesh(new THREE.BoxGeometry(1, 1.5, 0.1), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+            frame.position.y = 1.5;
+            easel.add(frame);
+            group.add(easel);
+        }
 
         return group;
     }
 
-    createOffice() {
+
+    createOffice(config = {}) {
         const group = new THREE.Group();
+        const heightScale = config.scale || 1;
+        const floors = Math.floor(8 * heightScale);
+        const glassColor = config.glassColor || 0x88ccff;
+
         const wallMat = new THREE.MeshPhysicalMaterial({
-            color: 0x888888,
+            color: config.color || 0x888888,
             roughness: 0.2,
             metalness: 0.5
         });
+
+        // Building Height calculation
+        const towerHeight = floors * 4;
+        const lobbyHeight = 6;
 
         // Floor (Lobby)
         const floor = new THREE.Mesh(new THREE.BoxGeometry(12, 0.2, 12), new THREE.MeshStandardMaterial({ color: 0x333333 }));
@@ -834,46 +1490,42 @@ export class World {
         doorHeader.position.set(0, 5, 5.75);
         group.add(doorHeader);
 
-        // Upper Tower (Solid for now, starts above lobby)
-        const towerGeo = new THREE.BoxGeometry(12, 14, 12);
-        const towerMat = new THREE.MeshStandardMaterial({ color: 0xAAAAAA }); // Lighter Grey
+        // Upper Tower
+        const towerGeo = new THREE.BoxGeometry(12, towerHeight, 12);
+        const towerMat = new THREE.MeshStandardMaterial({ color: config.color || 0xAAAAAA });
         const tower = new THREE.Mesh(towerGeo, towerMat);
-        tower.position.y = 13; // 6 + 7
+        tower.position.y = lobbyHeight + towerHeight / 2;
         tower.castShadow = true;
         group.add(tower);
 
         // Windows for Tower
-        const windowGeo = new THREE.PlaneGeometry(1, 1);
-        const windowMat = new THREE.MeshBasicMaterial({ color: 0x87CEEB });
+        const windowGeo = new THREE.PlaneGeometry(1.5, 2);
+        const windowMat = new THREE.MeshBasicMaterial({ color: glassColor });
 
-        // Add some windows to tower
-        for (let i = 0; i < 4; i++) { // Sides
-            for (let y = 8; y < 19; y += 3) { // Floors (relative to ground)
-                for (let x = -4; x <= 4; x += 3) {
-                    // Need to adjust logic to place on tower surface
-                    // Since tower is separate mesh, we can add windows to `tower` object or calculate global pos.
-                    // Easier to add to `group` with offset.
+        // Add windows per floor
+        for (let f = 0; f < floors; f++) {
+            const h = lobbyHeight + 2 + (f * 4);
+            if (h > lobbyHeight + towerHeight - 2) continue;
 
-                    // Front Face of Tower
-                    const win = new THREE.Mesh(windowGeo, windowMat);
-                    win.position.set(x, y, 6.01);
-                    group.add(win);
-
-                    const winBack = win.clone();
-                    winBack.position.set(x, y, -6.01);
-                    winBack.rotation.y = Math.PI;
-                    group.add(winBack);
-
-                    const winLeft = win.clone();
-                    winLeft.position.set(-6.01, y, x);
-                    winLeft.rotation.y = -Math.PI / 2;
-                    group.add(winLeft);
-
-                    const winRight = win.clone();
-                    winRight.position.set(6.01, y, x);
-                    winRight.rotation.y = Math.PI / 2;
-                    group.add(winRight);
-                }
+            for (let x = -4; x <= 4; x += 3) {
+                // Front
+                const win = new THREE.Mesh(windowGeo, windowMat);
+                win.position.set(x, h, 6.01);
+                group.add(win);
+                // Back
+                const winBack = win.clone();
+                winBack.position.set(x, h, -6.01);
+                winBack.rotation.y = Math.PI;
+                group.add(winBack);
+                // Sides
+                const winLeft = win.clone();
+                winLeft.position.set(-6.01, h, x);
+                winLeft.rotation.y = -Math.PI / 2;
+                group.add(winLeft);
+                const winRight = win.clone();
+                winRight.position.set(6.01, h, x);
+                winRight.rotation.y = Math.PI / 2;
+                group.add(winRight);
             }
         }
 
@@ -1458,4 +2110,45 @@ export class World {
     }
 
 
+    addUrbanProps() {
+        // Add random props around the map (along pseudo-sidewalks)
+        const propCount = 60;
+        for (let i = 0; i < propCount; i++) {
+            const type = Math.random();
+            const x = (Math.random() - 0.5) * 350;
+            const z = (Math.random() - 0.5) * 350;
+
+            // Avoid placing props inside buildings (crude check)
+            if (Math.abs(x) < 30 && Math.abs(z) < 30) continue;
+
+            if (type < 0.3) {
+                // Fire Hydrant
+                const hydrant = new THREE.Group();
+                const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.8), new THREE.MeshStandardMaterial({ color: 0xFF0000 }));
+                body.position.y = 0.4;
+                hydrant.add(body);
+                const cap = new THREE.Mesh(new THREE.SphereGeometry(0.22), new THREE.MeshStandardMaterial({ color: 0xFF0000 }));
+                cap.position.y = 0.8;
+                hydrant.add(cap);
+                hydrant.position.set(x, 0, z);
+                this.scene.add(hydrant);
+            } else if (type < 0.6) {
+                // Mailbox
+                const mailbox = new THREE.Group();
+                const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+                post.position.y = 0.6;
+                mailbox.add(post);
+                const box = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.6), new THREE.MeshStandardMaterial({ color: 0x1976D2 }));
+                box.position.y = 1.3;
+                mailbox.add(box);
+                mailbox.position.set(x, 0, z);
+                this.scene.add(mailbox);
+            } else {
+                // Trash Can
+                const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.3, 1), new THREE.MeshStandardMaterial({ color: 0x444444 }));
+                bin.position.set(x, 0.5, z);
+                this.scene.add(bin);
+            }
+        }
+    }
 }

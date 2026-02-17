@@ -9,7 +9,8 @@ import { DigitalTwinEngine } from './DigitalTwin.js';
 export class Game {
     constructor() {
         this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 1000);
+        this.scene.background = new THREE.Color(0x87CEEB); // Sky Blue Background for brightness
+        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.shadowMap.enabled = true;
@@ -90,7 +91,7 @@ export class Game {
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.05;
         this.controls.minDistance = 5;
-        this.controls.maxDistance = 50;
+        this.controls.maxDistance = 500;
         this.controls.maxPolarAngle = Math.PI / 2 - 0.1; // Prevent going below ground
 
         this.fpsControls = new PointerLockControls(this.camera, document.body);
@@ -584,14 +585,15 @@ export class Game {
 
         // Update Lighting (Day/Night cycle)
         const hour = this.gameTime / 60;
-        let intensity = 1;
+        let intensity = 3.0; // Very Bright Day
         if (hour < 6 || hour > 18) {
-            intensity = 0.2; // Night
+            intensity = 0.8; // Night (visible)
         } else if (hour < 8 || hour > 16) {
-            intensity = 0.5; // Dawn/Dusk
+            intensity = 1.5; // Dawn/Dusk
         }
+
         this.directionalLight.intensity = intensity;
-        this.ambientLight.intensity = intensity * 0.5;
+        this.ambientLight.intensity = intensity * 0.8; // High ambient for brightness
     }
 
     animate() {
@@ -601,6 +603,7 @@ export class Game {
 
         this.updateTime(deltaTime);
         this.updateLighting(this.gameTime); // New Lighting Control
+        if (this.world.update) this.world.update(deltaTime);
 
         if (this.isDriving) {
             this.car.update(deltaTime, this.character.keys); // Reuse character keys

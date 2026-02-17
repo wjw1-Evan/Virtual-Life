@@ -1,6 +1,8 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 export class NPC {
+    // ... (NPC class remains unchanged)
     constructor(scene, x, z, id) {
         this.scene = scene;
         this.id = id;
@@ -72,15 +74,25 @@ export class Character {
     constructor(scene, camera) {
         this.scene = scene;
         this.camera = camera;
-        this.mesh = null;
+        this.mesh = new THREE.Group(); // Container
+        this.model = null; // The actual GLB model
+        this.mixer = null; // Animation Mixer
+        this.actions = {}; // Store animation actions
+        this.activeAction = null;
+
         this.speed = 5;
         this.runSpeed = 10;
-        this.rotationSpeed = 5;
+        this.rotationSpeed = 10; // Faster rotation for responsiveness
 
-        // Create character mesh (Humanoid Group)
-        this.mesh = this.createHumanoid();
-        this.mesh.position.y = 0; // pivot at feet
+        // Placeholder until model loads
+        this.placeholder = this.createHumanoid();
+        this.mesh.add(this.placeholder);
+
+        this.mesh.position.y = 0;
         this.scene.add(this.mesh);
+
+        // Load Model
+        this.loadModel();
 
         // Movement state
         this.keys = {
@@ -135,9 +147,133 @@ export class Character {
         });
     }
 
+    handleMovement(deltaTime, buildings) {
+        const moveDistance = this.speed * deltaTime;
+        const direction = new THREE.Vector3();
+
+        // Let's get camera forward vector projected on XZ plane
+        const forward = new THREE.Vector3(0, 0, -1);
+        forward.applyQuaternion(this.camera.quaternion);
+        forward.y = 0;
+        forward.normalize();
+
+        const right = new THREE.Vector3(1, 0, 0);
+        right.applyQuaternion(this.camera.quaternion);
+        right.y = 0;
+        right.normalize();
+
+        if (this.keys.w) direction.add(forward);
+        if (this.keys.s) direction.sub(forward);
+        if (this.keys.a) direction.sub(right);
+        if (this.keys.d) direction.add(right);
+
+        if (direction.length() > 0) {
+            direction.normalize();
+
+            // Collision Detection
+            let blocked = false;
+            if (buildings && buildings.length > 0) {
+                blocked = this.checkCollision(direction, 1.0, buildings);
+            }
+
+            if (!blocked) {
+                this.mesh.position.addScaledVector(direction, moveDistance);
+            }
+
+            // Rotate character to face movement direction (only in TPS mode, in FPS we are invisible)
+            const angle = Math.atan2(direction.x, direction.z);
+
+            // Smooth rotation
+            if (this.model) {
+                const targetQuat = new THREE.Quaternion();
+                targetQuat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+                this.mesh.quaternion.slerp(targetQuat, deltaTime * this.rotationSpeed);
+            } else {
+                this.mesh.rotation.y = angle;
+            }
+
+            // Animation State
+            if (moveDistance > this.speed * deltaTime * 1.5) {
+                this.fadeToAction('Walk', 0.2);
+            } else {
+                this.fadeToAction('Walk', 0.2);
+            }
+        } else {
+            this.fadeToAction('Idle', 0.2);
+        }
+    }
+
+    checkCollision(direction, distance, buildings) {
+        if (!this.raycaster) this.raycaster = new THREE.Raycaster();
+
+        // Cast ray from center of body height
+        const origin = this.mesh.position.clone().add(new THREE.Vector3(0, 1, 0));
+        this.raycaster.set(origin, direction);
+        this.raycaster.far = distance;
+        this.raycaster.camera = this.camera; // Required for raycasting against Sprites
+
+        // Recursive check against all buildings
+        // Note: For performance, we might want to filter only nearby buildings using Quadtree or distance check first.
+        // For now, checking all 30 buildings is okay (~1000 meshes).
+        const intersects = this.raycaster.intersectObjects(buildings, true);
+
+        // Filter out sprites from collision results so labels don't block movement
+        const wallIntersects = intersects.filter(hit => !hit.object.isSprite);
+
+        return wallIntersects.length > 0;
+    }
+
+    loadModel() {
+        const loader = new GLTFLoader();
+        loader.load('assets/models/Soldier.glb', (gltf) => {
+            console.log("Model loaded", gltf);
+            this.model = gltf.scene;
+
+            // Remove placeholder
+            this.mesh.remove(this.placeholder);
+
+            this.mesh.add(this.model);
+            this.model.traverse(function (object) {
+                if (object.isMesh) object.castShadow = true;
+            });
+
+            // Animations
+            this.mixer = new THREE.AnimationMixer(this.model);
+            const animations = gltf.animations;
+
+            // Soldier.glb animations: Idle, Run, Walk, TPose
+            // Check names
+            // console.log(animations); 
+
+            this.actions['Idle'] = this.mixer.clipAction(animations.find(clip => clip.name === 'Idle'));
+            this.actions['Walk'] = this.mixer.clipAction(animations.find(clip => clip.name === 'Walk'));
+            this.actions['Run'] = this.mixer.clipAction(animations.find(clip => clip.name === 'Run'));
+            // this.actions['TPose'] = this.mixer.clipAction(animations[3]);
+
+            this.activeAction = this.actions['Idle'];
+            this.activeAction.play();
+        }, undefined, (error) => {
+            console.error('An error happened loading the model', error);
+        });
+    }
+
+    fadeToAction(name, duration) {
+        if (!this.mixer || !this.actions[name]) return;
+
+        const previousAction = this.activeAction;
+        const activeAction = this.actions[name];
+
+        if (previousAction !== activeAction) {
+            previousAction.fadeOut(duration);
+            activeAction.reset().fadeIn(duration).play();
+            this.activeAction = activeAction;
+        }
+    }
+
     update(deltaTime, buildings) {
-        this.handleMovement(deltaTime);
-        // this.updateCamera(); // Disable built-in camera follow to use OrbitControls
+        if (this.mixer) this.mixer.update(deltaTime); // Update animations
+
+        this.handleMovement(deltaTime, buildings);
         this.updateStats(deltaTime);
         this.checkInteractions(buildings);
     }
@@ -145,16 +281,19 @@ export class Character {
     checkInteractions(buildings) {
         // Raycast forward from character
         const direction = new THREE.Vector3(0, 0, 1);
-        direction.applyQuaternion(this.mesh.quaternion); // If mesh rotates, otherwise use movement direction
-
-        // Simpler approach: Check distance to all buildings
-        // Since we don't have character rotation fully implemented yet, let's use distance
+        direction.applyQuaternion(this.mesh.quaternion);
 
         let closestBuilding = null;
-        let minDistance = this.interactionRange;
+        let minDistance = this.interactionRange || 3.0; // Ensure range is defined
+
+        const worldPos = new THREE.Vector3();
 
         for (const building of buildings) {
-            const distance = this.mesh.position.distanceTo(building.position);
+            if (!building) continue;
+            building.getWorldPosition(worldPos);
+            const distance = this.mesh.position.distanceTo(worldPos);
+
+            // Adjust range based on object size if needed, but simple distance is fine for now
             if (distance < minDistance) {
                 closestBuilding = building;
                 minDistance = distance;
@@ -166,11 +305,14 @@ export class Character {
 
         if (this.interactionTarget) {
             prompt.classList.remove('hidden');
-            if (this.interactionTarget.userData.type === 'Desk') {
-                prompt.innerText = "按 E 工作 (写代码)";
-            } else {
-                prompt.innerText = `按 E 交互: ${this.interactionTarget.userData.type}`;
-            }
+            const type = this.interactionTarget.userData.type || 'Unknown';
+            const action = this.interactionTarget.userData.action || '交互';
+
+            if (type === 'Desk') prompt.innerText = `按 E 工作`;
+            else if (type === 'Bed') prompt.innerText = `按 E 睡觉`;
+            else if (type === 'Kitchen') prompt.innerText = `按 E 吃饭`;
+            else if (type === 'Sofa') prompt.innerText = `按 E 休息`;
+            else prompt.innerText = `按 E ${action}: ${type}`;
         } else {
             prompt.classList.add('hidden');
         }
@@ -198,53 +340,6 @@ export class Character {
         } else {
             const event = new CustomEvent('itemUsed', { detail: { message: "背包中没有食物！" } });
             window.dispatchEvent(event);
-        }
-    }
-
-    handleMovement(deltaTime) {
-        const moveDistance = this.speed * deltaTime;
-        const direction = new THREE.Vector3();
-
-        // Check if we are in FPS mode (implicit via camera check)
-        // If FPS mode, keys move relative to camera look direction
-        // If TPS mode, keys move relative to world (for now, or we can make it camera relative too)
-
-        // Let's get camera forward vector projected on XZ plane
-        const forward = new THREE.Vector3(0, 0, -1);
-        forward.applyQuaternion(this.camera.quaternion);
-        forward.y = 0;
-        forward.normalize();
-
-        const right = new THREE.Vector3(1, 0, 0);
-        right.applyQuaternion(this.camera.quaternion);
-        right.y = 0;
-        right.normalize();
-
-        if (this.keys.w) direction.add(forward);
-        if (this.keys.s) direction.sub(forward);
-        if (this.keys.a) direction.sub(right);
-        if (this.keys.d) direction.add(right);
-
-        if (direction.length() > 0) {
-            direction.normalize();
-            this.mesh.position.addScaledVector(direction, moveDistance);
-
-            // Rotate character to face movement direction (only in TPS mode, in FPS we are invisible)
-            // We can just always rotate mesh, it doesn't hurt.
-            // But in world-axis movement (old way), we rotated 
-            /*
-            if (this.keys.w) direction.z -= 1;
-            if (this.keys.s) direction.z += 1;
-            ...
-            
-            Now we are camera relative.
-            */
-
-            // If we are visible, we should rotate mesh to face direction?
-            // Actually in FPS, the mesh mimics camera, but it's hidden.
-            // In TPS, it's nice to face movement.
-            const angle = Math.atan2(direction.x, direction.z);
-            this.mesh.rotation.y = angle; // Simple rotation
         }
     }
 
