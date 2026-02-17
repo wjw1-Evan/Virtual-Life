@@ -1,41 +1,34 @@
 import * as THREE from 'three';
+import { assetLoader } from './AssetLoader.js';
 
 export class AICar {
     constructor(scene, x, z, axis) {
         this.scene = scene;
-        // axis: 'x' (moves along X) or 'z' (moves along Z)
         this.axis = axis;
 
-        const carGroup = new THREE.Group();
-        const colors = [0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFFFFFF, 0x000000];
-        const color = colors[Math.floor(Math.random() * colors.length)];
-
-        // Simple Box Car
-        const body = new THREE.Mesh(new THREE.BoxGeometry(2, 0.8, 4), new THREE.MeshStandardMaterial({ color: color }));
-        body.position.y = 0.5;
-        carGroup.add(body);
-        const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.6, 2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-        cabin.position.set(0, 1.2, 0);
-        carGroup.add(cabin);
-
-        // Wheels
-        const wGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.2);
-        const wMat = new THREE.MeshStandardMaterial({ color: 0x000000 });
-        [[-1, 1], [1, 1], [-1, -1], [1, -1]].forEach(p => {
-            const w = new THREE.Mesh(wGeo, wMat);
-            w.rotation.z = Math.PI / 2;
-            w.position.set(p[0], 0.4, p[1] * 1.5);
-            carGroup.add(w);
-        });
-
-        carGroup.position.set(x, 0, z);
-        if (axis === 'x') carGroup.rotation.y = Math.PI / 2;
-
-        this.mesh = carGroup;
+        this.mesh = new THREE.Group();
+        this.mesh.position.set(x, 0, z);
+        if (axis === 'x') this.mesh.rotation.y = Math.PI / 2;
         this.scene.add(this.mesh);
 
+        // Load Model
+        assetLoader.loadModel('assets/models/car.glb').then(model => {
+            model.scale.set(0.5, 0.5, 0.5); // Adjust scale to match world
+            // Rotate model if needed (Ferrari model in Three.js usually faces -Z or +Z)
+            model.rotation.y = Math.PI;
+            this.mesh.add(model);
+
+            // Random color if model supports it (Ferrari usually doesn't easily without deep traversal, but let's try)
+            model.traverse(child => {
+                if (child.isMesh && child.name.includes('body')) {
+                    child.material = child.material.clone();
+                    child.material.color.setHex(Math.random() * 0xffffff);
+                }
+            });
+        });
+
         this.speed = 10 + Math.random() * 10;
-        this.direction = 1; // 1 or -1
+        this.direction = 1;
     }
 
     update(deltaTime) {
@@ -64,61 +57,19 @@ export class Car {
         this.velocity = 0;
         this.rotation = 0;
 
-        this.mesh = this.createCarModel();
-        this.mesh.position.set(0, 0, 10); // Start position
-        this.mesh.castShadow = true;
+        this.mesh = new THREE.Group();
+        this.mesh.position.set(0, 0, 10);
         this.scene.add(this.mesh);
-    }
 
-    createCarModel() {
-        const group = new THREE.Group();
-
-        // Body
-        const bodyGeo = new THREE.BoxGeometry(2, 0.5, 4);
-        const bodyMat = new THREE.MeshStandardMaterial({ color: 0xff0000 }); // Red
-        const body = new THREE.Mesh(bodyGeo, bodyMat);
-        body.position.y = 0.5;
-        body.castShadow = true;
-        group.add(body);
-
-        // Roof
-        const roofGeo = new THREE.BoxGeometry(1.8, 0.4, 2);
-        const roofMat = new THREE.MeshStandardMaterial({ color: 0xcc0000 });
-        const roof = new THREE.Mesh(roofGeo, roofMat);
-        roof.position.y = 0.95;
-        roof.castShadow = true;
-        group.add(roof);
-
-        // Wheels
-        const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 16);
-        const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
-
-        const positions = [
-            { x: -1, z: -1.2 }, { x: 1, z: -1.2 },
-            { x: -1, z: 1.2 }, { x: 1, z: 1.2 }
-        ];
-
-        positions.forEach(pos => {
-            const wheel = new THREE.Mesh(wheelGeo, wheelMat);
-            wheel.rotation.z = Math.PI / 2;
-            wheel.position.set(pos.x, 0.3, pos.z);
-            wheel.castShadow = true;
-            group.add(wheel);
+        // Load High Quality Model
+        assetLoader.loadModel('assets/models/car.glb').then(model => {
+            model.scale.set(0.6, 0.6, 0.6);
+            model.rotation.y = Math.PI;
+            this.mesh.add(model);
         });
-
-        // Headlights
-        const lightGeo = new THREE.CircleGeometry(0.2, 16);
-        const lightMat = new THREE.MeshBasicMaterial({ color: 0xffffaa });
-        const leftLight = new THREE.Mesh(lightGeo, lightMat);
-        leftLight.position.set(-0.6, 0.6, 2.01);
-        group.add(leftLight);
-
-        const rightLight = new THREE.Mesh(lightGeo, lightMat);
-        rightLight.position.set(0.6, 0.6, 2.01);
-        group.add(rightLight);
-
-        return group;
     }
+
+
 
     update(deltaTime, keys) {
         // Acceleration

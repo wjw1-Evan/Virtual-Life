@@ -14,32 +14,40 @@ export class Game {
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.shadowMap.enabled = true;
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.2;
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
         document.body.appendChild(this.renderer.domElement);
 
         this.clock = new THREE.Clock();
 
         // Lighting
-        this.ambientLight = new THREE.AmbientLight(0x404040, 2); // Soft white light
+        this.ambientLight = new THREE.AmbientLight(0xffffff, 0.8); // Neutral white ambient
         this.scene.add(this.ambientLight);
 
-        this.directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-        this.directionalLight.position.set(10, 20, 10);
+        // Hemisphere Light for natural sky/ground bounce
+        this.hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+        this.scene.add(this.hemiLight);
+
+        this.directionalLight = new THREE.DirectionalLight(0xffffff, 2.0);
+        this.directionalLight.position.set(50, 100, 50);
         this.directionalLight.castShadow = true;
         this.directionalLight.shadow.camera.near = 0.1;
-        this.directionalLight.shadow.camera.far = 500;
-        this.directionalLight.shadow.camera.left = -300;
-        this.directionalLight.shadow.camera.right = 300;
-        this.directionalLight.shadow.camera.top = 300;
-        this.directionalLight.shadow.camera.bottom = -300;
-        this.directionalLight.shadow.mapSize.width = 2048;
-        this.directionalLight.shadow.mapSize.height = 2048;
+        this.directionalLight.shadow.camera.far = 1000;
+        this.directionalLight.shadow.camera.left = -500;
+        this.directionalLight.shadow.camera.right = 500;
+        this.directionalLight.shadow.camera.top = 500;
+        this.directionalLight.shadow.camera.bottom = -500;
+        this.directionalLight.shadow.mapSize.width = 4096; // Higher res shadows
+        this.directionalLight.shadow.mapSize.height = 4096;
+        this.scene.add(this.directionalLight);
 
         // Sun Mesh (Visual representation)
         const sunGeo = new THREE.SphereGeometry(15, 32, 32);
-        const sunMat = new THREE.MeshBasicMaterial({ color: 0xFFFF00, toneMapped: false });
+        const sunMat = new THREE.MeshBasicMaterial({ color: 0xFFFACD, toneMapped: false }); // Pale golden
         this.sunMesh = new THREE.Mesh(sunGeo, sunMat);
         this.scene.add(this.sunMesh);
-        this.scene.fog = new THREE.FogExp2(0x87CEEB, 0.002); // Init Fog
+        this.scene.fog = new THREE.FogExp2(0xcceefb, 0.001); // Light blue atmospheric fog
         this.buildings = [];
         this.npcs = [];
         this.traffic = [];
