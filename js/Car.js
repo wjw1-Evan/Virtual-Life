@@ -13,7 +13,7 @@ export class AICar {
 
         // Load Model
         assetLoader.loadModel('assets/models/car.glb').then(model => {
-            model.scale.set(4.5, 4.5, 4.5); // Adjust scale to match world
+            model.scale.set(3.2, 3.2, 3.2); // Proportional scale for AI cars
             // Rotate model if needed (Ferrari model in Three.js usually faces -Z or +Z)
             model.rotation.y = Math.PI;
             this.mesh.add(model);
@@ -63,7 +63,7 @@ export class Car {
 
         // Load High Quality Model
         assetLoader.loadModel('assets/models/car.glb').then(model => {
-            model.scale.set(5.0, 5.0, 5.0); // Scaled up to match world
+            model.scale.set(3.5, 3.5, 3.5); // Proportional scale for player car
             model.rotation.y = Math.PI;
             this.mesh.add(model);
         });
@@ -105,6 +105,40 @@ export class Car {
         const forward = new THREE.Vector3(0, 0, 1);
         forward.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.rotation);
 
-        this.mesh.position.addScaledVector(forward, this.velocity * deltaTime);
+        const moveVector = forward.clone().multiplyScalar(this.velocity * deltaTime);
+
+        // Collision Detection for Car
+        let blocked = false;
+        if (arguments[2] && arguments[2].length > 0) { // Check if buildings array passed
+            const buildings = arguments[2];
+            if (!this.raycaster) this.raycaster = new THREE.Raycaster();
+
+            // Car is smaller now, adjusted offsets
+            const offsets = [1.5, 0, -1.5];
+            const moveDir = moveVector.clone().normalize();
+
+            if (moveVector.length() > 0.001) {
+                for (const zOff of offsets) {
+                    const origin = this.mesh.position.clone();
+                    // Offset origin along car local axis
+                    const localOffset = new THREE.Vector3(0, 1, zOff).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.rotation);
+                    origin.add(localOffset);
+
+                    this.raycaster.set(origin, moveDir);
+                    this.raycaster.far = Math.max(3.0, moveVector.length() + 1.0);
+                    const intersects = this.raycaster.intersectObjects(buildings, true);
+                    if (intersects.some(hit => !hit.object.isSprite)) {
+                        blocked = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!blocked) {
+            this.mesh.position.add(moveVector);
+        } else {
+            this.velocity *= -0.5; // Bounce back slightly
+        }
     }
 }

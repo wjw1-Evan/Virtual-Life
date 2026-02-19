@@ -614,7 +614,7 @@ export class Game {
         if (this.world.update) this.world.update(deltaTime);
 
         if (this.isDriving) {
-            this.car.update(deltaTime, this.character.keys); // Reuse character keys
+            this.car.update(deltaTime, this.character.keys, this.world.buildings); // Pass buildings for collision
             this.character.mesh.position.copy(this.car.mesh.position); // Move character with car (hidden)
             this.controls.target.copy(this.car.mesh.position);
         } else {

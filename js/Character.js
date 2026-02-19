@@ -174,7 +174,10 @@ export class Character {
             // Collision Detection
             let blocked = false;
             if (buildings && buildings.length > 0) {
-                blocked = this.checkCollision(direction, 1.0, buildings);
+                // Check collision at two heights: chest (1.0) and knees (0.4)
+                // Use a slightly larger distance to prevent clipping (buffer + moveDistance)
+                const collisionRange = Math.max(1.2, moveDistance * 2);
+                blocked = this.checkCollision(direction, collisionRange, buildings);
             }
 
             if (!blocked) {
@@ -207,21 +210,28 @@ export class Character {
     checkCollision(direction, distance, buildings) {
         if (!this.raycaster) this.raycaster = new THREE.Raycaster();
 
-        // Cast ray from center of body height
-        const origin = this.mesh.position.clone().add(new THREE.Vector3(0, 1, 0));
-        this.raycaster.set(origin, direction);
-        this.raycaster.far = distance;
-        this.raycaster.camera = this.camera; // Required for raycasting against Sprites
+        // Check at three different heights: knees (0.4), chest (1.0) and head (1.6)
+        const heights = [0.4, 1.0, 1.6];
+        const bufferedDistance = distance + 0.5; // Add buffer to detect walls slightly earlier
 
-        // Recursive check against all buildings
-        // Note: For performance, we might want to filter only nearby buildings using Quadtree or distance check first.
-        // For now, checking all 30 buildings is okay (~1000 meshes).
-        const intersects = this.raycaster.intersectObjects(buildings, true);
+        for (const h of heights) {
+            // Start the ray slightly behind the character to prevent "starting inside the wall"
+            const backward = direction.clone().multiplyScalar(-0.2);
+            const origin = this.mesh.position.clone().add(new THREE.Vector3(0, h, 0)).add(backward);
 
-        // Filter out sprites from collision results so labels don't block movement
-        const wallIntersects = intersects.filter(hit => !hit.object.isSprite);
+            this.raycaster.set(origin, direction);
+            this.raycaster.far = bufferedDistance;
 
-        return wallIntersects.length > 0;
+            const intersects = this.raycaster.intersectObjects(buildings, true);
+            const hits = intersects.filter(hit => !hit.object.isSprite && hit.object.visible);
+
+            if (hits.length > 0) {
+                // Confirm the hit is actually in front of the character (not behind due to back-offset)
+                if (hits[0].distance > 0.1) return true;
+            }
+        }
+
+        return false;
     }
 
     loadModel() {
