@@ -85,15 +85,15 @@ export class Character {
         this.runSpeed = 10;
         this.rotationSpeed = 10; // Faster rotation for responsiveness
 
-        // Placeholder until model loads
-        this.placeholder = this.createHumanoid();
+        // Stickman Character Model
+        this.placeholder = this.createStickman();
         this.mesh.add(this.placeholder);
 
         this.mesh.position.y = 0;
         this.scene.add(this.mesh);
 
-        // Load Model
-        this.loadModel();
+        // Load Model (Disabled for Stickman)
+        // this.loadModel();
 
         // Movement state
         this.keys = {
@@ -137,6 +137,9 @@ export class Character {
             }
             if (key === 'i') {
                 this.useItem();
+            }
+            if (key === '3') {
+                this.mesh.position.set(0, 0, 0);
             }
         });
 
@@ -197,13 +200,19 @@ export class Character {
             }
 
             // Animation State
-            if (moveDistance > this.speed * deltaTime * 1.5) {
-                this.fadeToAction('Walk', 0.2);
-            } else {
-                this.fadeToAction('Walk', 0.2);
+            this.isMoving = true;
+            if (this.mixer) {
+                if (moveDistance > this.speed * deltaTime * 1.5) {
+                    this.fadeToAction('Walk', 0.2);
+                } else {
+                    this.fadeToAction('Walk', 0.2);
+                }
             }
         } else {
-            this.fadeToAction('Idle', 0.2);
+            this.isMoving = false;
+            if (this.mixer) {
+                this.fadeToAction('Idle', 0.2);
+            }
         }
     }
 
@@ -280,6 +289,25 @@ export class Character {
         if (this.mixer) this.mixer.update(deltaTime); // Update animations
 
         this.handleMovement(deltaTime, buildings);
+
+        // Procedural Stickman Animation
+        if (this.limbs) {
+            if (this.walkTime === undefined) this.walkTime = 0;
+            if (this.isMoving) {
+                this.walkTime += deltaTime * 10;
+            } else {
+                // Smoothly return to standing pose
+                this.walkTime += (0 - this.walkTime) * Math.min(10 * deltaTime, 1.0);
+                if (Math.abs(this.walkTime) < 0.01) this.walkTime = 0;
+            }
+
+            const sin = Math.sin(this.walkTime);
+            this.limbs.leftArmGroup.rotation.x = sin * 0.8;
+            this.limbs.rightArmGroup.rotation.x = -sin * 0.8;
+            this.limbs.leftLegGroup.rotation.x = -sin * 0.8;
+            this.limbs.rightLegGroup.rotation.x = sin * 0.8;
+        }
+
         this.updateStats(deltaTime);
         this.checkInteractions(buildings);
     }
@@ -349,52 +377,63 @@ export class Character {
         }
     }
 
-    createHumanoid() {
+    createStickman() {
         const group = new THREE.Group();
-
-        const material = new THREE.MeshStandardMaterial({ color: 0xffccaa }); // Skin
-        const shirtMat = new THREE.MeshStandardMaterial({ color: 0x3366cc }); // Blue Shirt
-        const pantsMat = new THREE.MeshStandardMaterial({ color: 0x333333 }); // Dark Pants
+        const material = new THREE.MeshStandardMaterial({ color: 0x111111 }); // Black stickman
 
         // Head
-        const headGeo = new THREE.SphereGeometry(0.4, 16, 16);
+        const headGeo = new THREE.SphereGeometry(0.2, 16, 16);
         const head = new THREE.Mesh(headGeo, material);
         head.position.y = 1.7;
         head.castShadow = true;
         group.add(head);
 
         // Body
-        const bodyGeo = new THREE.BoxGeometry(0.6, 0.8, 0.3);
-        const body = new THREE.Mesh(bodyGeo, shirtMat);
+        const bodyGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.8);
+        const body = new THREE.Mesh(bodyGeo, material);
         body.position.y = 1.1;
         body.castShadow = true;
         group.add(body);
 
         // Arms
-        const armGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.6);
-        const leftArm = new THREE.Mesh(armGeo, shirtMat);
-        leftArm.position.set(-0.4, 1.1, 0);
-        leftArm.rotation.z = Math.PI / 8;
-        leftArm.castShadow = true;
-        group.add(leftArm);
+        const armGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.6);
 
-        const rightArm = new THREE.Mesh(armGeo, shirtMat);
-        rightArm.position.set(0.4, 1.1, 0);
-        rightArm.rotation.z = -Math.PI / 8;
-        rightArm.castShadow = true;
-        group.add(rightArm);
+        const leftArmGroup = new THREE.Group();
+        leftArmGroup.position.set(-0.2, 1.4, 0);
+        const leftArm = new THREE.Mesh(armGeo, material);
+        leftArm.position.y = -0.3;
+        leftArmGroup.add(leftArm);
+        leftArmGroup.rotation.z = Math.PI / 12;
+        group.add(leftArmGroup);
+
+        const rightArmGroup = new THREE.Group();
+        rightArmGroup.position.set(0.2, 1.4, 0);
+        const rightArm = new THREE.Mesh(armGeo, material);
+        rightArm.position.y = -0.3;
+        rightArmGroup.add(rightArm);
+        rightArmGroup.rotation.z = -Math.PI / 12;
+        group.add(rightArmGroup);
 
         // Legs
-        const legGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.7);
-        const leftLeg = new THREE.Mesh(legGeo, pantsMat);
-        leftLeg.position.set(-0.2, 0.35, 0);
-        leftLeg.castShadow = true;
-        group.add(leftLeg);
+        const legGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.7);
 
-        const rightLeg = new THREE.Mesh(legGeo, pantsMat);
-        rightLeg.position.set(0.2, 0.35, 0);
-        rightLeg.castShadow = true;
-        group.add(rightLeg);
+        const leftLegGroup = new THREE.Group();
+        leftLegGroup.position.set(-0.1, 0.7, 0);
+        const leftLeg = new THREE.Mesh(legGeo, material);
+        leftLeg.position.y = -0.35;
+        leftLegGroup.add(leftLeg);
+        group.add(leftLegGroup);
+
+        const rightLegGroup = new THREE.Group();
+        rightLegGroup.position.set(0.1, 0.7, 0);
+        const rightLeg = new THREE.Mesh(legGeo, material);
+        rightLeg.position.y = -0.35;
+        rightLegGroup.add(rightLeg);
+        group.add(rightLegGroup);
+
+        this.limbs = {
+            leftArmGroup, rightArmGroup, leftLegGroup, rightLegGroup
+        };
 
         return group;
     }

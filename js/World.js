@@ -43,38 +43,30 @@ export class World {
 
     createBuildings() {
         const zones = [
-            // Standardized City Grid: Each building has a unique slot along the roads
-            // Format: x, z coordinates planned to avoid overlaps on the 100m road grid
+            // Central Residential Area
+            { name: 'My Home', type: 'house', cellX: 0, cellZ: 0, label: '我的家' },
 
-            // Road X=0 (South/North Main St)
-            { name: 'My Home', type: 'house', x: -20, z: 80, label: '我的家' },
-            { name: 'Neighbor A', type: 'house', x: 20, z: 80, label: '邻居 A' },
-            { name: 'Neighbor B', type: 'house', x: -20, z: 120, label: '邻居 B' },
-            { name: 'Neighbor C', type: 'house', x: 20, z: 120, label: '邻居 C' },
-            { name: 'Apartment Alpha', type: 'house', x: -20, z: 160, label: '白鹭公寓' },
-            { name: 'Apartment Beta', type: 'house', x: 20, z: 160, label: '香颂公馆' },
+            // Central Commercial Area
+            { name: 'Supermarket', type: 'store', cellX: 0, cellZ: -1, label: '悦生活超市', neonColor: 0x4CAF50 },
+            { name: 'Bakery', type: 'store', cellX: -1, cellZ: -1, label: '麦香工坊' },
+            { name: 'Cafe', type: 'store', cellX: 1, cellZ: -1, label: '漫时咖啡' },
+            { name: 'Pizza Place', type: 'store', cellX: 1, cellZ: 0, label: '意风披萨' },
+            { name: 'Gym', type: 'store', cellX: -2, cellZ: -1, label: '力美健身' },
 
-            // Road Z=0 (East/West Main St)
-            { name: 'Supermarket', type: 'store', x: -80, z: -20, label: '悦生活超市', neonColor: 0x4CAF50 },
-            { name: 'Bakery', type: 'store', x: -40, z: -20, label: '麦香工坊' },
-            { name: 'Cafe', type: 'store', x: 40, z: -20, label: '漫时咖啡' },
-            { name: 'Pizza Place', type: 'store', x: 80, z: -20, label: '意风披萨' },
-            { name: 'Gym', type: 'store', x: -80, z: 20, label: '力美健身' },
+            // East Business District
+            { name: 'Office A', type: 'office', cellX: 1, cellZ: 1, label: '环球中心 A' },
+            { name: 'Office B', type: 'office', cellX: 2, cellZ: 1, label: '环球中心 B' },
+            { name: 'Bank', type: 'office', cellX: 2, cellZ: 0, label: '建设银行' },
+            { name: 'Skyscraper A', type: 'office', cellX: 2, cellZ: -1, label: '天际大厦' },
 
-            // Business District (Road X=100)
-            { name: 'Office A', type: 'office', x: 80, z: 40, label: '环球中心 A' },
-            { name: 'Office B', type: 'office', x: 120, z: 40, label: '环球中心 B' },
-            { name: 'Bank', type: 'office', x: 80, z: -40, label: '建设银行' },
-            { name: 'Skyscraper A', type: 'office', x: 120, z: -40, label: '天际大厦' },
-
-            // Medical & Services (Road X=-100)
-            { name: 'Hospital', type: 'office', x: -120, z: 40, label: '第一人民医院' },
-            { name: 'Police Station', type: 'office', x: -80, z: 40, label: '公安局' },
-            { name: 'Fire Station', type: 'store', x: -120, z: -40, label: '消防中心' },
-            { name: 'Cinema', type: 'office', x: -80, z: -40, label: '星空影城' },
+            // North Medical & Services
+            { name: 'Hospital', type: 'office', cellX: -1, cellZ: -2, label: '第一人民医院' },
+            { name: 'Police Station', type: 'office', cellX: 0, cellZ: -2, label: '公安局' },
+            { name: 'Fire Station', type: 'store', cellX: -2, cellZ: -2, label: '消防中心' },
+            { name: 'Cinema', type: 'office', cellX: 1, cellZ: -2, label: '星空影城' },
 
             // Landmarks
-            { name: 'Lighthouse', type: 'office', x: 180, z: 180, label: '观海灯塔' }
+            { name: 'Lighthouse', type: 'office', cellX: 2, cellZ: -2, label: '观海灯塔' }
         ];
 
         const palettes = {
@@ -87,39 +79,38 @@ export class World {
             const roadSpacing = 100;
             const roadWidth = 10;
 
-            // Standardized Uniform Scale for all buildings (approx 8 floors)
-            const uniformScale = 4.0;
+            // Calculate center of the grid cell
+            // cellX = 0 -> block between X=0 and X=100 -> center X = 50
+            // cellX = -1 -> block between X=0 and X=-100 -> center X = -50
+            const blockCenterX = zone.cellX >= 0 ? zone.cellX * roadSpacing + roadSpacing / 2 : zone.cellX * roadSpacing + roadSpacing / 2;
+            const blockCenterZ = zone.cellZ >= 0 ? zone.cellZ * roadSpacing + roadSpacing / 2 : zone.cellZ * roadSpacing + roadSpacing / 2;
 
-            // Dynamic Offset: Half road + Half building width + safe buffer
-            const buildingHalfWidth = uniformScale * 1.5;
-            const dynamicSidewalkOffset = (roadWidth / 2) + buildingHalfWidth + 5;
+            // Place exactly in the center of the block grid
+            let finalX = blockCenterX;
+            let finalZ = blockCenterZ;
+            let finalRotation = 0; // Face South by default
 
-            // Find nearest road
-            const nearRoadX = Math.round(zone.x / roadSpacing) * roadSpacing;
-            const nearRoadZ = Math.round(zone.z / roadSpacing) * roadSpacing;
-
-            const distToX = Math.abs(zone.x - nearRoadX);
-            const distToZ = Math.abs(zone.z - nearRoadZ);
-
-            let finalX, finalZ, finalRotation;
-            const subGrid = 40; // Strict secondary grid snapping
-
-            if (distToX < distToZ) {
-                // Align to North-South road (X is fixed offset, Z snaps to grid)
-                finalX = nearRoadX + (zone.x > nearRoadX ? dynamicSidewalkOffset : -dynamicSidewalkOffset);
-                finalZ = Math.round(zone.z / subGrid) * subGrid;
-                finalRotation = zone.x > nearRoadX ? -Math.PI / 2 : Math.PI / 2;
+            // Optionally adjust rotation based on block position to face nearest road
+            if (Math.abs(blockCenterX) > Math.abs(blockCenterZ)) {
+                finalRotation = blockCenterX > 0 ? -Math.PI / 2 : Math.PI / 2;
             } else {
-                // Align to East-West road (Z is fixed offset, X snaps to grid)
-                finalZ = nearRoadZ + (zone.z > nearRoadZ ? dynamicSidewalkOffset : -dynamicSidewalkOffset);
-                finalX = Math.round(zone.x / subGrid) * subGrid;
-                finalRotation = zone.z > nearRoadZ ? 0 : Math.PI;
+                finalRotation = blockCenterZ > 0 ? 0 : Math.PI;
             }
 
             const group = new THREE.Group();
             group.position.set(finalX, 0, finalZ);
             group.rotation.y = finalRotation;
             this.scene.add(group);
+
+            if (zone.name === 'My Home') {
+                this.createModernHouse(group);
+                if (zone.label) {
+                    const label = this.createLabel(zone.label);
+                    label.position.y = 8;
+                    group.add(label);
+                }
+                return; // Use forEach equivalent of continue
+            }
 
             let modelPath = 'assets/models/commercial_building.glb';
             const typePalette = palettes[zone.type] || palettes.office;
@@ -141,7 +132,15 @@ export class World {
                 // Apply UNIFORM scale
                 model.scale.set(uniformScale, uniformScale, uniformScale);
                 model.rotation.y = 0;
-                model.position.y = 0.15;
+
+                // Force bounding box centering exactly within the visual center
+                const box = new THREE.Box3().setFromObject(model);
+                const center = box.getCenter(new THREE.Vector3());
+                const offset = model.position.clone().sub(center);
+                offset.y = 0; // Don't shift vertically based on Bounding Box center, only horizontally
+                model.position.add(offset);
+                model.position.y = 0.15; // Set base height
+
                 group.add(model);
 
                 // 1. Foundation Slab (Concrete base)
@@ -192,6 +191,110 @@ export class World {
                 label.position.y = (zone.scale || 1) * 15;
                 group.add(label);
             }
+        });
+    }
+
+    createModernHouse(group) {
+        // Floor
+        const floorGeo = new THREE.BoxGeometry(16, 0.4, 16);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.2 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.position.y = 0.2;
+        floor.receiveShadow = true;
+        group.add(floor);
+
+        // Roof
+        const roofGeo = new THREE.BoxGeometry(18, 0.5, 18);
+        const roofMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+        const roof = new THREE.Mesh(roofGeo, roofMat);
+        roof.position.y = 5.25;
+        roof.castShadow = true;
+        group.add(roof);
+
+        // Walls (Glass and concrete)
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
+        const glassMat = new THREE.MeshStandardMaterial({ color: 0x88ccff, transparent: true, opacity: 0.3, roughness: 0.1 });
+
+        // Back Wall
+        const backWall = new THREE.Mesh(new THREE.BoxGeometry(16, 5, 0.5), wallMat);
+        backWall.position.set(0, 2.7, -7.75);
+        backWall.castShadow = true;
+        group.add(backWall);
+
+        // Side Wall
+        const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5, 16), wallMat);
+        sideWall.position.set(-7.75, 2.7, 0);
+        sideWall.castShadow = true;
+        group.add(sideWall);
+
+        // Front Glass Wall
+        const frontGlass = new THREE.Mesh(new THREE.BoxGeometry(16, 5, 0.2), glassMat);
+        frontGlass.position.set(0, 2.7, 7.9);
+        group.add(frontGlass);
+
+        // Other Side Glass Wall
+        const rightGlass = new THREE.Mesh(new THREE.BoxGeometry(0.2, 5, 16), glassMat);
+        rightGlass.position.set(7.9, 2.7, 0);
+        group.add(rightGlass);
+
+        // Interactive Furniture
+        // 1. Bed
+        const bedGrp = new THREE.Group();
+        bedGrp.position.set(-5, 0.4, -5);
+        const bedFrame = new THREE.Mesh(new THREE.BoxGeometry(3, 0.5, 5), new THREE.MeshStandardMaterial({ color: 0x5c4033 }));
+        bedFrame.position.y = 0.25;
+        const mattress = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.4, 4.8), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+        mattress.position.y = 0.7;
+        bedGrp.add(bedFrame, mattress);
+        bedGrp.userData = { type: 'Bed', action: '睡觉' };
+        this.buildings.push(bedGrp);
+        group.add(bedGrp);
+
+        // 2. Sofa
+        const sofaGrp = new THREE.Group();
+        sofaGrp.position.set(3, 0.4, -5);
+        const sofaBase = new THREE.Mesh(new THREE.BoxGeometry(4, 0.6, 2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+        sofaBase.position.y = 0.3;
+        const sofaBack = new THREE.Mesh(new THREE.BoxGeometry(4, 1.2, 0.5), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+        sofaBack.position.set(0, 0.9, -0.75);
+        sofaGrp.add(sofaBase, sofaBack);
+        sofaGrp.userData = { type: 'Sofa', action: '休息' };
+        this.buildings.push(sofaGrp);
+        group.add(sofaGrp);
+
+        // 3. Kitchen Table
+        const kitchenGrp = new THREE.Group();
+        kitchenGrp.position.set(3, 0.4, 3);
+        const tableTop = new THREE.Mesh(new THREE.BoxGeometry(3, 0.2, 2), new THREE.MeshStandardMaterial({ color: 0xdddddd }));
+        tableTop.position.y = 1.2;
+        const legMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+        const lgA = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.2), legMat); lgA.position.set(-1.3, 0.6, -0.8);
+        const lgB = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.2), legMat); lgB.position.set(1.3, 0.6, -0.8);
+        const lgC = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.2), legMat); lgC.position.set(-1.3, 0.6, 0.8);
+        const lgD = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.2), legMat); lgD.position.set(1.3, 0.6, 0.8);
+        kitchenGrp.add(tableTop, lgA, lgB, lgC, lgD);
+        kitchenGrp.userData = { type: 'Kitchen', action: '吃饭' };
+        this.buildings.push(kitchenGrp);
+        group.add(kitchenGrp);
+
+        // 4. Desk (Work)
+        const deskGrp = new THREE.Group();
+        deskGrp.position.set(-5, 0.4, 3);
+        const deskTop = new THREE.Mesh(new THREE.BoxGeometry(2, 0.1, 4), new THREE.MeshStandardMaterial({ color: 0x8b5a2b }));
+        deskTop.position.y = 1.0;
+        const dgA = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.0), legMat); dgA.position.set(-0.8, 0.5, -1.8);
+        const dgB = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.0), legMat); dgB.position.set(0.8, 0.5, -1.8);
+        const dgC = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.0), legMat); dgC.position.set(-0.8, 0.5, 1.8);
+        const dgD = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.0), legMat); dgD.position.set(0.8, 0.5, 1.8);
+        deskGrp.add(deskTop, dgA, dgB, dgC, dgD);
+        deskGrp.userData = { type: 'Desk', action: '工作' };
+        this.buildings.push(deskGrp);
+        group.add(deskGrp);
+
+        // Add walls dynamically to buildings for collision
+        [backWall, sideWall, frontGlass, rightGlass].forEach(w => {
+            w.userData = { type: 'Wall', label: '墙壁' };
+            this.buildings.push(w);
         });
     }
 
@@ -251,6 +354,8 @@ export class World {
             this.scene.add(road);
         }
     }
+
+
 
     createStreetLights() {
         const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 8);
