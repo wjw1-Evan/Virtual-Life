@@ -3,28 +3,44 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { assetLoader } from './AssetLoader.js';
 
 export class NPC {
-    // ... (NPC class remains unchanged)
     constructor(scene, x, z, id) {
         this.scene = scene;
         this.id = id;
-
-        // Simple NPC Mesh (Capsule-like)
         this.group = new THREE.Group();
 
-        const colors = [0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0x00FFFF, 0xFF00FF, 0xFFFFFF, 0x000000];
-        const color = colors[Math.floor(Math.random() * colors.length)];
+        // Load resident texture
+        const textureLoader = new THREE.TextureLoader();
+        const texture = textureLoader.load('Textures/residents.png');
 
-        const bodyGeo = new THREE.CylinderGeometry(0.3, 0.3, 1.4);
-        const bodyMat = new THREE.MeshStandardMaterial({ color: color });
-        const body = new THREE.Mesh(bodyGeo, bodyMat);
-        body.position.y = 0.7;
-        this.group.add(body);
+        // Sprite sheet is 2x2
+        // We clone it so each NPC can have its own offset
+        const npcTexture = texture.clone();
+        npcTexture.needsUpdate = true;
+        npcTexture.repeat.set(0.5, 0.5);
 
-        const headGeo = new THREE.SphereGeometry(0.25);
-        const headMat = new THREE.MeshStandardMaterial({ color: 0xFFCCAA }); // Skin tone
-        const head = new THREE.Mesh(headGeo, headMat);
-        head.position.y = 1.6;
-        this.group.add(head);
+        // Randomly pick one of the 4 residents
+        const typeIdx = Math.floor(Math.random() * 4);
+        const offsetX = (typeIdx % 2) * 0.5;
+        const offsetY = Math.floor(typeIdx / 2) === 0 ? 0.5 : 0; // Top row is 0.5 in UV, Bottom row is 0
+        npcTexture.offset.set(offsetX, offsetY);
+
+        const spriteMat = new THREE.SpriteMaterial({
+            map: npcTexture,
+            transparent: true,
+            alphaTest: 0.1
+        });
+        const sprite = new THREE.Sprite(spriteMat);
+        sprite.scale.set(3, 3, 1);
+        sprite.position.y = 1.5;
+        this.group.add(sprite);
+
+        // Simple shadow under feet
+        const shadowGeo = new THREE.CircleGeometry(0.4, 16);
+        const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.2 });
+        const shadow = new THREE.Mesh(shadowGeo, shadowMat);
+        shadow.rotation.x = -Math.PI / 2;
+        shadow.position.y = 0.05;
+        this.group.add(shadow);
 
         this.group.position.set(x, 0, z);
         this.scene.add(this.group);
@@ -32,33 +48,35 @@ export class NPC {
         // Movement State
         this.targetX = x;
         this.targetZ = z;
-        this.speed = 2 + Math.random();
-        this.state = 'idle'; // idle, walk
-        this.timer = 0;
+        this.speed = 1.5 + Math.random() * 1.5;
+        this.state = 'idle';
+        this.timer = Math.random() * 5;
 
-        this.pickNewTarget();
+        this.bounds = 200; // Walk within community bounds
     }
 
     pickNewTarget() {
-        // Random point within city bounds (-150 to 150)
-        this.targetX = (Math.random() - 0.5) * 300;
-        this.targetZ = (Math.random() - 0.5) * 300;
-        this.state = 'walk';
+        // Find a random point on the sidewalk/roads
+        // For simplicity, circular random or grid-based
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * this.bounds;
+        this.targetX = Math.cos(angle) * dist;
+        this.targetZ = Math.sin(angle) * dist;
 
-        // Face target
-        this.group.lookAt(this.targetX, 0, this.targetZ);
+        this.state = 'walk';
     }
 
     update(deltaTime) {
         if (this.state === 'walk') {
             const dx = this.targetX - this.group.position.x;
             const dz = this.targetZ - this.group.position.z;
-            const dist = Math.sqrt(dx * dx + dz * dz);
+            const distSq = dx * dx + dz * dz;
 
-            if (dist < 0.5) {
+            if (distSq < 0.2) {
                 this.state = 'idle';
-                this.timer = 1 + Math.random() * 3; // Wait 1-4s
+                this.timer = 2 + Math.random() * 4;
             } else {
+                const dist = Math.sqrt(distSq);
                 this.group.position.x += (dx / dist) * this.speed * deltaTime;
                 this.group.position.z += (dz / dist) * this.speed * deltaTime;
             }
@@ -122,6 +140,7 @@ export class Character {
         this.raycaster = new THREE.Raycaster();
         this.interactionTarget = null;
         this.interactionRange = 5;
+        this.movementEnabled = true;
 
         this.initInput();
     }
@@ -152,6 +171,7 @@ export class Character {
     }
 
     handleMovement(deltaTime, buildings) {
+        if (!this.movementEnabled) return;
         const moveDistance = this.speed * deltaTime;
         const direction = new THREE.Vector3();
 

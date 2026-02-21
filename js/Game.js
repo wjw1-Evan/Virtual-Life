@@ -3,8 +3,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { World } from './World.js';
 import { Character } from './Character.js';
-import { Car } from './Car.js';
 import { DigitalTwinEngine } from './DigitalTwin.js';
+import { Car } from './Car.js';
 
 export class Game {
     constructor() {
@@ -50,7 +50,6 @@ export class Game {
         this.scene.fog = new THREE.FogExp2(0xcceefb, 0.001); // Light blue atmospheric fog
         this.buildings = [];
         this.npcs = [];
-        this.traffic = [];
         this.init();
     }
 
@@ -69,25 +68,35 @@ export class Game {
         this.character.mesh.position.set(-15, 0, -15);
         // this.updateCamera(); // This method is not defined in the original code, keeping it commented as per instruction
 
-        // Spawn Car (moved from constructor)
-        this.car = new Car(this.scene, -25, -15);
-
-        // Create Digital Twin Engine
         this.digitalTwin = new DigitalTwinEngine(this.scene, this.camera);
         this.digitalTwin.init(this.buildings);
 
-        // Spawn Traffic (new)
-        import('./Car.js').then(module => {
-            for (let i = 0; i < 5; i++) {
-                this.traffic.push(new module.AICar(this.scene, 0, (Math.random() - 0.5) * 300, 'x'));
-                this.traffic.push(new module.AICar(this.scene, (Math.random() - 0.5) * 300, 0, 'z'));
-            }
-        });
+        // Spawn Car
+        this.car = new Car(this.scene, -10, 0, -20);
+        this.isDriving = false;
 
-        // Spawn NPCs (new)
+        // Spawn NPCs
         import('./Character.js').then(module => {
-            for (let i = 0; i < 30; i++) {
-                this.npcs.push(new module.NPC(this.scene, (Math.random() - 0.5) * 100, (Math.random() - 0.5) * 100, i));
+            const npcPositions = [];
+            const spacing = 40;
+            const roadGridSize = 100;
+            const offset = 12; // Sidewalk distance
+            const mapBound = 200; // Limits to exactly a 2 or 3 block radius
+
+            // Collect valid spots around roads (sidewalks)
+            for (let x = -mapBound; x <= mapBound; x += roadGridSize) {
+                for (let z = -mapBound; z <= mapBound; z += spacing) {
+                    if (Math.abs(z % roadGridSize) > 15 && Math.random() > 0.5) {
+                        npcPositions.push({ x: x + (Math.random() > 0.5 ? offset : -offset), z: z });
+                    }
+                }
+            }
+            // Shuffle and pick 30
+            npcPositions.sort(() => 0.5 - Math.random());
+
+            for (let i = 0; i < 30 && i < npcPositions.length; i++) {
+                const pos = npcPositions[i];
+                this.npcs.push(new module.NPC(this.scene, pos.x, pos.z, i));
             }
         });
 
@@ -107,9 +116,8 @@ export class Game {
         // Game State (these remain in constructor as they are state variables)
         this.gameTime = 8 * 60; // Start at 8:00 AM (in minutes)
         this.day = 1;
-        this.timeSpeed = 10; // How fast time passes
+        this.timeSpeed = 2; // Slower passage of time (was 10)
         this.isFirstPerson = false;
-        this.isDriving = false;
 
         this.loadGame();
 
@@ -120,11 +128,8 @@ export class Game {
 
         window.addEventListener('keydown', (e) => {
             const key = e.key.toLowerCase();
-            if (key === 'v' && !this.isDriving) { // Toggle camera only when not driving
+            if (key === 'v') { // Toggle camera view
                 this.toggleCameraView();
-            }
-            if (key === 'f') {
-                this.toggleDriving();
             }
             if (key === '1') {
                 this.character.stats.money += 100;
@@ -138,9 +143,34 @@ export class Game {
                 this.character.stats.stress = 0;
                 this.showMessage("作弊: 状态全满");
             }
+            if (key === '4') {
+                this.gameTime = 12 * 60; // Noon
+                this.showMessage("时间控制: 已切换至白天");
+            }
+            if (key === '5') {
+                this.gameTime = 0 * 60; // Midnight
+                this.showMessage("时间控制: 已切换至黑夜");
+            }
             if (key === 't') {
                 const active = this.digitalTwin.toggle();
                 this.showMessage(active ? "数字孪生引擎: 启动" : "数字孪生引擎: 关闭");
+            }
+            if (key === 'f' && this.isDriving) { // Exit car
+                this.toggleDriving();
+            }
+        });
+
+        // Pass keyboard events to car if driving
+        window.addEventListener('keydown', (e) => {
+            if (this.isDriving && this.car) {
+                const key = e.key.toLowerCase();
+                if (this.car.keys.hasOwnProperty(key)) this.car.keys[key] = true;
+            }
+        });
+        window.addEventListener('keyup', (e) => {
+            if (this.isDriving && this.car) {
+                const key = e.key.toLowerCase();
+                if (this.car.keys.hasOwnProperty(key)) this.car.keys[key] = false;
             }
         });
 
@@ -316,6 +346,28 @@ export class Game {
         }
     }
 
+    toggleDriving() {
+        if (this.isDriving) {
+            // Exit Car
+            this.isDriving = false;
+            this.car.exit();
+            this.character.mesh.visible = true;
+            this.character.movementEnabled = true;
+            this.character.mesh.position.copy(this.car.mesh.position).add(new THREE.Vector3(3, 0, 0)); // Spawn next to car
+            this.showMessage("已下车 (按 E 重新驾驶)");
+        } else {
+            // Enter Car
+            this.isDriving = true;
+            this.car.enter();
+            this.character.mesh.visible = false;
+            this.character.movementEnabled = false;
+            this.isFirstPerson = false; // Force TP for driving
+            if (this.fpsControls.isLocked) this.fpsControls.unlock();
+            this.controls.enabled = true;
+            this.showMessage("正在驾驶 (WASD 控制, F 下车)");
+        }
+    }
+
     showMessage(text) {
         const msg = document.getElementById('game-message');
         msg.innerText = text;
@@ -341,6 +393,8 @@ export class Game {
             this.gameTime = 8 * 60; // Wake up at 8 AM next day
             this.day++;
             this.showMessage("睡了个好觉，精力恢复了！");
+        } else if (type === 'Car') {
+            this.toggleDriving();
         } else if (type === 'Desk') {
             // Write Code (Work)
             if (character.stats.energy >= 20) {
@@ -485,10 +539,7 @@ export class Game {
         } else if (type === 'Post Office') {
             this.showMessage("邮局: 没有你的信件。");
         } else if (type === 'Mechanic') {
-            if (this.car && character.stats.money >= 50) {
-                character.stats.money -= 50;
-                this.showMessage("车保养好了！ (-$50)");
-            } else { this.showMessage("修车需要 $50。"); }
+            this.showMessage("修车店!");
         } else if (type === 'Gas Station') {
             if (character.stats.money >= 20) {
                 character.stats.money -= 20;
@@ -590,18 +641,75 @@ export class Game {
         const minutes = Math.floor(this.gameTime % 60);
         document.getElementById('time').innerText = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
         document.getElementById('day-counter').innerText = this.day;
+    }
 
-        // Update Lighting (Day/Night cycle)
-        const hour = this.gameTime / 60;
-        let intensity = 3.0; // Very Bright Day
-        if (hour < 6 || hour > 18) {
-            intensity = 0.8; // Night (visible)
-        } else if (hour < 8 || hour > 16) {
-            intensity = 1.5; // Dawn/Dusk
+    updateLighting(gameTime) {
+        const hours = gameTime / 60;
+
+        // Calculate day progress (0 = midnight, 12 = noon, 24 = midnight)
+        let progress = hours / 24;
+
+        // Sun elevation (smooth sine wave, peaking at noon)
+        // Adjust formula so 6am is 0 (horizon), 12pm is 1 (zenith), 18pm is 0
+        const sunAngle = (hours - 6) / 12 * Math.PI;
+
+        // Push sun far away so it doesn't clip with buildings
+        const sunDist = 800;
+        this.sunMesh.position.set(
+            Math.cos(sunAngle) * sunDist,
+            Math.max(-50, Math.sin(sunAngle) * sunDist), // Don't go too far below horizon
+            -sunDist * 0.5 // Offset slightly to cast diagonal shadows
+        );
+
+        // Make light follow the physical sun mesh
+        this.directionalLight.position.copy(this.sunMesh.position);
+
+        // Colors
+        const skyNight = new THREE.Color(0x050510);
+        const skyDawn = new THREE.Color(0xffaa55);
+        const skyDay = new THREE.Color(0x87CEEB);
+
+        const lightNight = new THREE.Color(0x223355);
+        const lightDawn = new THREE.Color(0xffbb77);
+        const lightDay = new THREE.Color(0xffffff);
+
+        let currentSky = new THREE.Color();
+        let currentLight = new THREE.Color();
+        let currentIntensity = 0;
+
+        // Blending logic based on time
+        if (hours >= 5 && hours < 8) {
+            // Dawn transition
+            const t = (hours - 5) / 3;
+            currentSky.lerpColors(skyNight, skyDawn, t).lerp(skyDay, Math.max(0, t - 0.5) * 2);
+            currentLight.lerpColors(lightNight, lightDawn, t).lerp(lightDay, Math.max(0, t - 0.5) * 2);
+            currentIntensity = 0.5 + t * 2.0;
+        } else if (hours >= 8 && hours < 17) {
+            // Full Day
+            currentSky.copy(skyDay);
+            currentLight.copy(lightDay);
+            currentIntensity = 2.5;
+        } else if (hours >= 17 && hours < 20) {
+            // Dusk transition
+            const t = (hours - 17) / 3;
+            currentSky.lerpColors(skyDay, skyDawn, t).lerp(skyNight, Math.max(0, t - 0.5) * 2);
+            currentLight.lerpColors(lightDay, lightDawn, t).lerp(lightNight, Math.max(0, t - 0.5) * 2);
+            currentIntensity = 2.5 - t * 2.0;
+        } else {
+            // Night
+            currentSky.copy(skyNight);
+            currentLight.copy(lightNight);
+            currentIntensity = 0.3;
         }
 
-        this.directionalLight.intensity = intensity;
-        this.ambientLight.intensity = intensity * 0.8; // High ambient for brightness
+        // Apply colors
+        this.scene.background = currentSky;
+        this.scene.fog.color = currentSky;
+
+        this.directionalLight.color = currentLight;
+        this.directionalLight.intensity = currentIntensity;
+        // Keep ambient light slightly dimmer than main light
+        this.ambientLight.intensity = Math.max(0.2, currentIntensity * 0.4);
     }
 
     animate() {
@@ -611,66 +719,39 @@ export class Game {
 
         this.updateTime(deltaTime);
         this.updateLighting(this.gameTime); // New Lighting Control
-        if (this.world.update) this.world.update(deltaTime);
+        if (this.world.update) this.world.update(deltaTime, this.gameTime, this.character ? this.character.mesh.position : null);
 
-        if (this.isDriving) {
-            this.car.update(deltaTime, this.character.keys, this.world.buildings); // Pass buildings for collision
-            this.character.mesh.position.copy(this.car.mesh.position); // Move character with car (hidden)
-            this.controls.target.copy(this.car.mesh.position);
+        const interactables = [...this.world.buildings];
+        if (this.car) interactables.push(this.car.mesh);
+
+        this.character.update(deltaTime, interactables);
+        if (this.car) this.car.update(deltaTime, this.world.buildings);
+
+        if (this.isDriving && this.car) {
+            // Car Driving: Camera follows car
+            const carPos = this.car.mesh.position;
+            const targetPos = carPos.clone().add(new THREE.Vector3(0, 2, 0));
+            this.controls.target.copy(targetPos);
+
+            // Camera position relative to car
+            const offset = new THREE.Vector3(0, 8, -15);
+            offset.applyQuaternion(this.car.mesh.quaternion);
+            this.camera.position.copy(carPos).add(offset);
+
+            this.controls.update();
+        } else if (this.isFirstPerson) {
+            // FPS: Camera follows character position (offset to head)
+            this.camera.position.copy(this.character.mesh.position).add(new THREE.Vector3(0, 1.7, 0));
+            // Rotation is handled by PointerLockControls
         } else {
-            this.character.update(deltaTime, this.world.buildings);
-
-            if (this.isFirstPerson) {
-                // FPS: Camera follows character position (offset to head)
-                this.camera.position.copy(this.character.mesh.position).add(new THREE.Vector3(0, 1.7, 0));
-                // Rotation is handled by PointerLockControls
-            } else {
-                // TPS: Camera looks at character head
-                const targetPos = this.character.mesh.position.clone().add(new THREE.Vector3(0, 1.8, 0));
-                this.controls.target.copy(targetPos);
-                this.controls.update(); // Only update OrbitControls when active
-            }
+            // TPS: Camera looks at character head
+            const targetPos = this.character.mesh.position.clone().add(new THREE.Vector3(0, 1.8, 0));
+            this.controls.target.copy(targetPos);
+            this.controls.update(); // Only update OrbitControls when active
         }
 
         if (this.digitalTwin) this.digitalTwin.update(deltaTime, this.gameTime);
 
-        // Car Interaction Prompt
-        if (!this.isDriving) {
-            const dist = this.character.mesh.position.distanceTo(this.car.mesh.position);
-            const prompt = document.getElementById('interaction-prompt');
-
-            // Priority to Car if very close, otherwise fallback to existing building interaction
-            if (dist < 8) {
-                prompt.classList.remove('hidden');
-                prompt.innerText = "按 F 驾驶汽车";
-            }
-            // Note: Character.js handles building prompts. We only override if close to car.
-            // But Character.js runs every frame too. We might overlap.
-            // Ideally we should centralize this. For now, let's trust Character.js updates prompt.
-            // If we are close to car, we force it.
-        }
-
         this.renderer.render(this.scene, this.camera);
-    }
-
-    toggleDriving() {
-        if (this.isDriving) {
-            // Exit Car
-            this.isDriving = false;
-            this.character.mesh.visible = true;
-            // Place character slightly offset from car
-            this.character.mesh.position.x += 2;
-            this.showMessage("下车");
-        } else {
-            // Enter Car (Check distance)
-            const dist = this.character.mesh.position.distanceTo(this.car.mesh.position);
-            if (dist < 5) {
-                this.isDriving = true;
-                this.character.mesh.visible = false;
-                this.showMessage("驾驶模式! (WASD 驾驶)");
-            } else {
-                this.showMessage("离车太远了!");
-            }
-        }
     }
 }

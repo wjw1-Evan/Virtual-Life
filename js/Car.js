@@ -1,144 +1,158 @@
 import * as THREE from 'three';
 import { assetLoader } from './AssetLoader.js';
 
-export class AICar {
-    constructor(scene, x, z, axis) {
+export class Car {
+    constructor(scene, x, y, z) {
         this.scene = scene;
-        this.axis = axis;
-
         this.mesh = new THREE.Group();
-        this.mesh.position.set(x, 0, z);
-        if (axis === 'x') this.mesh.rotation.y = Math.PI / 2;
+        this.mesh.position.set(x, y, z);
+        this.mesh.userData = {
+            type: 'Car',
+            action: '驾驶',
+            instance: this
+        };
         this.scene.add(this.mesh);
 
-        // Load Model
-        assetLoader.loadModel('assets/models/car.glb').then(model => {
-            model.scale.set(3.2, 3.2, 3.2); // Proportional scale for AI cars
-            // Rotate model if needed (Ferrari model in Three.js usually faces -Z or +Z)
-            model.rotation.y = Math.PI;
-            this.mesh.add(model);
+        this.model = null;
+        this.loadModel();
 
-            // Random color if model supports it (Ferrari usually doesn't easily without deep traversal, but let's try)
-            model.traverse(child => {
-                if (child.isMesh && child.name.includes('body')) {
-                    child.material = child.material.clone();
-                    child.material.color.setHex(Math.random() * 0xffffff);
-                }
-            });
-        });
-
-        this.speed = 10 + Math.random() * 10;
-        this.direction = 1;
-    }
-
-    update(deltaTime) {
-        if (this.axis === 'x') {
-            this.mesh.position.x += this.speed * this.direction * deltaTime;
-            // Loop around world bounds
-            if (this.mesh.position.x > 200) this.mesh.position.x = -200;
-            if (this.mesh.position.x < -200) this.mesh.position.x = 200;
-        } else {
-            this.mesh.position.z += this.speed * this.direction * deltaTime;
-            if (this.mesh.position.z > 200) this.mesh.position.z = -200;
-            if (this.mesh.position.z < -200) this.mesh.position.z = 200;
-        }
-    }
-}
-
-export class Car {
-    constructor(scene, x, z) {
-        this.scene = scene;
+        // Driving physics
         this.speed = 0;
-        this.maxSpeed = 5.0; // Boosted speed!
-        this.acceleration = 50; // Faster acceleration
-        this.turnSpeed = 4;
-        this.friction = 15;
-
-        this.velocity = 0;
+        this.maxSpeed = 40;
+        this.acceleration = 15;
+        this.friction = 5;
+        this.braking = 30;
+        this.steering = 0;
+        this.steeringSpeed = 1.5;
         this.rotation = 0;
 
-        this.mesh = new THREE.Group();
-        this.mesh.position.set(0, 0, 10);
-        this.scene.add(this.mesh);
+        this.isDriving = false;
+        this.keys = {
+            w: false,
+            a: false,
+            s: false,
+            d: false
+        };
 
-        // Load High Quality Model
-        assetLoader.loadModel('assets/models/car.glb').then(model => {
-            model.scale.set(3.5, 3.5, 3.5); // Proportional scale for player car
-            model.rotation.y = Math.PI;
-            this.mesh.add(model);
-        });
+        this.initInput();
     }
 
+    async loadModel() {
+        try {
+            const gltf = await assetLoader.loadGLTF('assets/models/car.glb');
+            this.model = gltf.scene.clone();
 
+            // Auto-scale if needed, but let's try 1 first
+            this.model.scale.set(1.5, 1.5, 1.5);
+            this.model.traverse(child => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+            this.mesh.add(this.model);
 
-    update(deltaTime, keys) {
-        // Acceleration
-        if (keys.w) {
-            this.velocity += this.acceleration * deltaTime;
-        } else if (keys.s) {
-            this.velocity -= this.acceleration * deltaTime;
+            // Add interaction data
+            this.mesh.userData = {
+                type: 'Car',
+                action: '驾驶',
+                instance: this
+            };
+        } catch (err) {
+            console.error("Car: Load failed", err);
+            // Fallback: simple box car
+            const cube = new THREE.Mesh(
+                new THREE.BoxGeometry(2, 1, 4),
+                new THREE.MeshStandardMaterial({ color: 0xff0000 })
+            );
+            cube.position.y = 0.5;
+            this.mesh.add(cube);
+            this.mesh.userData = {
+                type: 'Car',
+                action: '驾驶',
+                instance: this
+            };
+        }
+    }
+
+    initInput() {
+        // We handle keys externally in Game.js for active vehicle, 
+        // but it's good to have them here if we want independent update
+    }
+
+    update(deltaTime, buildings) {
+        if (!this.isDriving) {
+            // Passive friction
+            if (this.speed > 0) this.speed = Math.max(0, this.speed - this.friction * deltaTime);
+            if (this.speed < 0) this.speed = Math.min(0, this.speed + this.friction * deltaTime);
         } else {
-            // Friction
-            if (this.velocity > 0) {
-                this.velocity = Math.max(0, this.velocity - this.friction * deltaTime);
-            } else if (this.velocity < 0) {
-                this.velocity = Math.min(0, this.velocity + this.friction * deltaTime);
+            // Handle acceleration
+            if (this.keys.w) {
+                this.speed += this.acceleration * deltaTime;
+            } else if (this.keys.s) {
+                this.speed -= this.acceleration * deltaTime;
+            } else {
+                // Friction
+                if (this.speed > 0) this.speed = Math.max(0, this.speed - this.friction * deltaTime);
+                if (this.speed < 0) this.speed = Math.min(0, this.speed + this.friction * deltaTime);
             }
-        }
 
-        // Cap speed
-        this.velocity = Math.max(-this.maxSpeed * 10, Math.min(this.maxSpeed * 20, this.velocity));
+            // Cap speed
+            this.speed = THREE.MathUtils.clamp(this.speed, -this.maxSpeed / 2, this.maxSpeed);
 
-        // Turning (only when moving)
-        if (Math.abs(this.velocity) > 0.1) {
-            if (keys.a) {
-                this.rotation += this.turnSpeed * deltaTime * Math.sign(this.velocity);
-            }
-            if (keys.d) {
-                this.rotation -= this.turnSpeed * deltaTime * Math.sign(this.velocity);
-            }
-        }
-
-        // Apply movement
-        this.mesh.rotation.y = this.rotation;
-
-        const forward = new THREE.Vector3(0, 0, 1);
-        forward.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.rotation);
-
-        const moveVector = forward.clone().multiplyScalar(this.velocity * deltaTime);
-
-        // Collision Detection for Car
-        let blocked = false;
-        if (arguments[2] && arguments[2].length > 0) { // Check if buildings array passed
-            const buildings = arguments[2];
-            if (!this.raycaster) this.raycaster = new THREE.Raycaster();
-
-            // Car is smaller now, adjusted offsets
-            const offsets = [1.5, 0, -1.5];
-            const moveDir = moveVector.clone().normalize();
-
-            if (moveVector.length() > 0.001) {
-                for (const zOff of offsets) {
-                    const origin = this.mesh.position.clone();
-                    // Offset origin along car local axis
-                    const localOffset = new THREE.Vector3(0, 1, zOff).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.rotation);
-                    origin.add(localOffset);
-
-                    this.raycaster.set(origin, moveDir);
-                    this.raycaster.far = Math.max(3.0, moveVector.length() + 1.0);
-                    const intersects = this.raycaster.intersectObjects(buildings, true);
-                    if (intersects.some(hit => !hit.object.isSprite)) {
-                        blocked = true;
-                        break;
-                    }
+            // Steering
+            if (Math.abs(this.speed) > 1) { // Can only steer if moving
+                const steeringDir = this.speed > 0 ? 1 : -1;
+                if (this.keys.a) {
+                    this.rotation += this.steeringSpeed * deltaTime * (Math.abs(this.speed) / this.maxSpeed + 0.5) * steeringDir;
+                }
+                if (this.keys.d) {
+                    this.rotation -= this.steeringSpeed * deltaTime * (Math.abs(this.speed) / this.maxSpeed + 0.5) * steeringDir;
                 }
             }
         }
 
-        if (!blocked) {
-            this.mesh.position.add(moveVector);
-        } else {
-            this.velocity *= -0.5; // Bounce back slightly
+        // Apply rotation
+        this.mesh.rotation.y = this.rotation;
+
+        // Apply movement with collision check
+        const direction = new THREE.Vector3(0, 0, this.speed > 0 ? 1 : -1);
+        direction.applyQuaternion(this.mesh.quaternion);
+
+        const moveDist = Math.abs(this.speed) * deltaTime;
+
+        if (moveDist > 0 && buildings) {
+            if (this.checkCollision(direction, moveDist + 1, buildings)) {
+                this.speed = 0; // Stop on collision
+                return;
+            }
         }
+
+        const velocity = direction.clone().multiplyScalar(moveDist);
+        this.mesh.position.add(velocity);
+    }
+
+    checkCollision(direction, distance, buildings) {
+        if (!this.raycaster) this.raycaster = new THREE.Raycaster();
+
+        // Check from front/back of car
+        const origin = this.mesh.position.clone().add(new THREE.Vector3(0, 1, 0));
+        this.raycaster.set(origin, direction);
+        this.raycaster.far = distance + 2; // Buffer for car length
+
+        const intersects = this.raycaster.intersectObjects(buildings, true);
+        return intersects.length > 0;
+    }
+
+    enter() {
+        this.isDriving = true;
+    }
+
+    exit() {
+        this.isDriving = false;
+        this.keys.w = false;
+        this.keys.a = false;
+        this.keys.s = false;
+        this.keys.d = false;
     }
 }
