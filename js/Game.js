@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-import { World } from './World.js';
-import { Character } from './Character.js';
-import { DigitalTwinEngine } from './DigitalTwin.js';
-import { Car } from './Car.js';
+import { World } from './World.js?v=31';
+import { Character } from './Character.js?v=31';
+import { DigitalTwinEngine } from './DigitalTwin.js?v=31';
+import { Car } from './Car.js?v=31';
 
 export class Game {
     constructor() {
@@ -50,58 +50,9 @@ export class Game {
         this.scene.fog = new THREE.FogExp2(0xcceefb, 0.001); // Light blue atmospheric fog
         this.buildings = [];
         this.npcs = [];
-        this.init();
-    }
-
-    init() {
-        // Scene setup (moved from constructor)
-        // this.setupScene(); // Not explicitly defined, but implied by existing scene setup
-        // this.setupCamera(); // Not explicitly defined, but implied by existing camera setup
-        // this.setupLights(); // Not explicitly defined, but implied by existing light setup
-
-        // Core Components (moved from constructor)
-        this.world = new World(this.scene);
-        this.buildings = this.world.buildings; // Link buildings for interaction reference
-
-        this.character = new Character(this.scene, this.camera);
-        // Start near home
-        this.character.mesh.position.set(-15, 0, -15);
-        // this.updateCamera(); // This method is not defined in the original code, keeping it commented as per instruction
-
-        this.digitalTwin = new DigitalTwinEngine(this.scene, this.camera);
-        this.digitalTwin.init(this.buildings);
-
-        // Spawn Car
-        this.car = new Car(this.scene, -10, 0, -20);
-        this.isDriving = false;
-
-        // Spawn NPCs
-        import('./Character.js').then(module => {
-            const npcPositions = [];
-            const spacing = 40;
-            const roadGridSize = 100;
-            const offset = 12; // Sidewalk distance
-            const mapBound = 200; // Limits to exactly a 2 or 3 block radius
-
-            // Collect valid spots around roads (sidewalks)
-            for (let x = -mapBound; x <= mapBound; x += roadGridSize) {
-                for (let z = -mapBound; z <= mapBound; z += spacing) {
-                    if (Math.abs(z % roadGridSize) > 15 && Math.random() > 0.5) {
-                        npcPositions.push({ x: x + (Math.random() > 0.5 ? offset : -offset), z: z });
-                    }
-                }
-            }
-            // Shuffle and pick 30
-            npcPositions.sort(() => 0.5 - Math.random());
-
-            for (let i = 0; i < 30 && i < npcPositions.length; i++) {
-                const pos = npcPositions[i];
-                this.npcs.push(new module.NPC(this.scene, pos.x, pos.z, i));
-            }
-        });
 
         // Camera setup (TPS initial perspective)
-        this.camera.position.set(-15, 15, 10); // Elevated and behind start pos
+        this.camera.position.set(50, 15, 60); // Elevated and behind start pos
 
         // Controls (moved from constructor)
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -118,6 +69,21 @@ export class Game {
         this.day = 1;
         this.timeSpeed = 2; // Slower passage of time (was 10)
         this.isFirstPerson = false;
+
+        // Core components
+        this.world = new World(this.scene);
+        this.buildings = this.world.buildings;
+
+        this.character = new Character(this.scene, this.camera);
+        this.character.mesh.position.set(50, 0, -15);
+
+        this.digitalTwin = new DigitalTwinEngine(this.scene, this.camera);
+        this.digitalTwin.init(this.buildings);
+
+        this.car = new Car(this.scene, -10, 0, -20);
+        this.isDriving = false;
+
+        this.npcs = [];
 
         this.loadGame();
 
@@ -387,25 +353,8 @@ export class Game {
         const type = e.detail.type;
         const character = this.character;
 
-        if (type === 'Home') {
-            // Sleep
-            character.stats.energy = 100;
-            this.gameTime = 8 * 60; // Wake up at 8 AM next day
-            this.day++;
-            this.showMessage("睡了个好觉，精力恢复了！");
-        } else if (type === 'Car') {
+        if (type === 'Car') {
             this.toggleDriving();
-        } else if (type === 'Desk') {
-            // Write Code (Work)
-            if (character.stats.energy >= 20) {
-                character.stats.energy -= 20;
-                character.stats.hunger -= 15;
-                character.stats.money += 100; // Programmers earn more!
-                this.gameTime += 2 * 60; // 2 hours of coding
-                this.showMessage("重构了一下代码... 金钱 +$100");
-            } else {
-                this.showMessage("脑子瓦特了！需要休息。");
-            }
         } else if (type === 'Office') {
             this.showMessage("进入办公室找到你的工位。");
         } else if (type === 'Shop') {
@@ -721,11 +670,11 @@ export class Game {
         this.updateLighting(this.gameTime); // New Lighting Control
         if (this.world.update) this.world.update(deltaTime, this.gameTime, this.character ? this.character.mesh.position : null);
 
-        const interactables = [...this.world.buildings];
+        const interactables = [...this.world.collisionObjects];
         if (this.car) interactables.push(this.car.mesh);
 
         this.character.update(deltaTime, interactables);
-        if (this.car) this.car.update(deltaTime, this.world.buildings);
+        if (this.car) this.car.update(deltaTime, this.world.collisionObjects);
 
         if (this.isDriving && this.car) {
             // Car Driving: Camera follows car

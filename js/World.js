@@ -1,16 +1,28 @@
 import * as THREE from 'three';
-import { assetLoader } from './AssetLoader.js';
+import { assetLoader } from './AssetLoader.js?v=31';
 
 export class World {
     constructor(scene) {
         this.scene = scene;
         this.buildings = [];
+        this.collisionObjects = [];
         this.neonMaterials = [];
         this.mixers = [];
         this.particles = [];
         this.streetLightMat = null;
 
         this.init();
+    }
+
+    addCollisionBox(parent, width, height, depth, position, userData = {}) {
+        const geometry = new THREE.BoxGeometry(width, height, depth);
+        const material = new THREE.MeshBasicMaterial({ visible: false });
+        const box = new THREE.Mesh(geometry, material);
+        if (position) box.position.copy(position);
+        box.userData = { isCollisionBox: true, ...userData };
+        parent.add(box);
+        this.collisionObjects.push(box);
+        return box;
     }
 
     async init() {
@@ -67,62 +79,32 @@ export class World {
 
     createBuildings() {
         const zones = [
-            { name: 'My Home', type: 'house', cellX: 0, cellZ: 0, label: '我的家' }, // Keeping the player home as a base
-            { name: 'Tower A', type: 'skyscraper', cellX: 0, cellZ: -1, label: '锦绣华庭 A座', height: 40 },
-            { name: 'Tower B', type: 'skyscraper', cellX: -1, cellZ: 0, label: '锦绣华庭 B座', height: 55 },
-            { name: 'Grand Plaza', type: 'skyscraper_commercial', cellX: 1, cellZ: 0, label: '环球中心', height: 80 },
-            { name: 'Tower C', type: 'skyscraper', cellX: 1, cellZ: -1, label: '锦绣华庭 C座', height: 45 },
-            { name: 'Community Park', type: 'park_amenity', cellX: 0, cellZ: 1, label: '中央公园' }
+            { name: 'Central Park', type: 'park_amenity', cellX: 1, cellZ: 0, label: '中央公园' }
         ];
-
-        const palettes = {
-            house: [0xfdfd96, 0xaec6cf, 0xffb7ce, 0x77dd77, 0xffd1dc, 0xcfcfff]
-        };
 
         zones.forEach(zone => {
             const roadSpacing = 100;
-            const roadWidth = 10;
-
-            // Calculate center of the grid cell
-            // cellX = 0 -> block between X=0 and X=100 -> center X = 50
-            // cellX = -1 -> block between X=0 and X=-100 -> center X = -50
             const blockCenterX = zone.cellX >= 0 ? zone.cellX * roadSpacing + roadSpacing / 2 : zone.cellX * roadSpacing + roadSpacing / 2;
             const blockCenterZ = zone.cellZ >= 0 ? zone.cellZ * roadSpacing + roadSpacing / 2 : zone.cellZ * roadSpacing + roadSpacing / 2;
 
-            // Place exactly in the center of the block grid
             let finalX = blockCenterX;
             let finalZ = blockCenterZ;
-            let finalRotation = 0; // Face South by default
-
-            // Optionally adjust rotation based on block position to face nearest road
-            if (Math.abs(blockCenterX) > Math.abs(blockCenterZ)) {
-                finalRotation = blockCenterX > 0 ? -Math.PI / 2 : Math.PI / 2;
-            } else {
-                finalRotation = blockCenterZ > 0 ? 0 : Math.PI;
-            }
+            let finalRotation = 0;
 
             const group = new THREE.Group();
             group.position.set(finalX, 0, finalZ);
             group.rotation.y = finalRotation;
             this.scene.add(group);
 
-            if (zone.name === 'My Home') {
-                this.createModernHouse(group);
-            } else if (zone.type === 'skyscraper') {
-                this.createSkyscraper(group, zone.height || 40, 0x333333);
-            } else if (zone.type === 'skyscraper_commercial') {
-                this.createSkyscraper(group, zone.height || 80, 0x112233, true);
-            } else if (zone.type === 'park_amenity') {
+            if (zone.type === 'park_amenity') {
                 this.createSmallPark(group);
             }
 
             if (zone.label) {
                 const label = this.createLabel(zone.label);
-                label.position.set(0, (zone.height || 10) + 5, 0);
+                label.position.set(0, 15, 0);
                 group.add(label);
             }
-
-            this.createLandscaping(group);
         });
     }
 
@@ -250,40 +232,741 @@ export class World {
     }
 
     createSmallPark(group) {
-        const grass = new THREE.Mesh(new THREE.CircleGeometry(25, 32), new THREE.MeshStandardMaterial({ color: 0x44aa44 }));
+        const parkRadius = 35;
+
+        // Multi-layer grass base
+        const grass = new THREE.Mesh(
+            new THREE.CircleGeometry(parkRadius, 64),
+            new THREE.MeshStandardMaterial({ color: 0x3a8c3a, roughness: 0.9 })
+        );
         grass.rotation.x = -Math.PI / 2;
-        grass.position.y = 0.1;
+        grass.position.y = 0.05;
         group.add(grass);
 
-        // Central sculpture
-        const sc = new THREE.Mesh(new THREE.TorusKnotGeometry(3, 0.8, 64, 16), new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 1, roughness: 0.1 }));
-        sc.position.y = 8;
-        group.add(sc);
+        // Lighter grass ring
+        const grassRing = new THREE.Mesh(
+            new THREE.RingGeometry(parkRadius * 0.6, parkRadius, 64),
+            new THREE.MeshStandardMaterial({ color: 0x4a9c4a, roughness: 0.95 })
+        );
+        grassRing.rotation.x = -Math.PI / 2;
+        grassRing.position.y = 0.06;
+        group.add(grassRing);
 
-        const base = new THREE.Mesh(new THREE.BoxGeometry(6, 4, 6), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-        base.position.y = 2;
-        group.add(base);
+        // Stone border around park
+        const borderGeo = new THREE.TorusGeometry(parkRadius, 0.4, 8, 64);
+        const borderMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.7 });
+        const border = new THREE.Mesh(borderGeo, borderMat);
+        border.rotation.x = -Math.PI / 2;
+        border.position.y = 0.2;
+        group.add(border);
 
-        // Benches
+        // Cross-shaped stone paths
+        const pathMat = new THREE.MeshStandardMaterial({ color: 0xbbaa99, roughness: 0.8 });
+        const pathWidth = 3;
+        const pathLength = parkRadius - 2;
+        for (let i = 0; i < 4; i++) {
+            const path = new THREE.Mesh(new THREE.BoxGeometry(pathWidth, 0.08, pathLength), pathMat);
+            path.position.set(0, 0.1, pathLength / 2 - parkRadius);
+            path.receiveShadow = true;
+            group.add(path);
+            // Rotate for cardinal directions
+            path.rotation.y = (Math.PI / 2) * i;
+            // Recalculate positions for rotated paths
+            path.position.x = Math.sin(path.rotation.y) * (pathLength / 2 - parkRadius);
+            path.position.z = Math.cos(path.rotation.y) * (pathLength / 2 - parkRadius);
+        }
+
+        // Circular central plaza
+        const plazaMat = new THREE.MeshStandardMaterial({ color: 0x999999, roughness: 0.6 });
+        const plaza = new THREE.Mesh(new THREE.CircleGeometry(8, 32), plazaMat);
+        plaza.rotation.x = -Math.PI / 2;
+        plaza.position.y = 0.12;
+        group.add(plaza);
+
+        // Circular path around center
+        const circlePath = new THREE.Mesh(
+            new THREE.RingGeometry(8, 9.5, 32),
+            new THREE.MeshStandardMaterial({ color: 0xaaaa99, roughness: 0.8 })
+        );
+        circlePath.rotation.x = -Math.PI / 2;
+        circlePath.position.y = 0.1;
+        group.add(circlePath);
+
+        // Central ornate fountain
+        this.createOrnateFountain(group);
+
+        // Decorative lampposts around circular path
         for (let i = 0; i < 8; i++) {
             const angle = (i / 8) * Math.PI * 2;
-            const bench = this.createBench();
-            bench.position.set(Math.cos(angle) * 18, 0, Math.sin(angle) * 18);
-            bench.rotation.y = -angle + Math.PI / 2;
+            const x = Math.cos(angle) * 10;
+            const z = Math.sin(angle) * 10;
+            this.createParkLamp(group, x, z);
+        }
+
+        // Park benches facing inward along outer circle
+        for (let i = 0; i < 6; i++) {
+            const angle = (i / 6) * Math.PI * 2 + Math.PI / 6;
+            const x = Math.cos(angle) * 28;
+            const z = Math.sin(angle) * 28;
+            const bench = this.createParkBench();
+            bench.position.set(x, 0, z);
+            bench.rotation.y = -angle + Math.PI;
             group.add(bench);
         }
 
-        // Water Fountain
-        const fountainBase = new THREE.Mesh(new THREE.CylinderGeometry(6, 6, 0.6, 32), new THREE.MeshStandardMaterial({ color: 0x888888 }));
-        fountainBase.position.y = 0.3;
-        const water = new THREE.Mesh(new THREE.CircleGeometry(5.8, 32), new THREE.MeshStandardMaterial({ color: 0x44ccff, transparent: true, opacity: 0.8, roughness: 0 }));
-        water.rotation.x = -Math.PI / 2;
-        water.position.y = 0.7;
-        group.add(fountainBase, water);
+        // Flower beds in a ring pattern
+        for (let i = 0; i < 12; i++) {
+            const angle = (i / 12) * Math.PI * 2;
+            const x = Math.cos(angle) * 18;
+            const z = Math.sin(angle) * 18;
+            this.createDetailedFlowerBed(group, x, z);
+        }
 
-        const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.5, 2), new THREE.MeshStandardMaterial({ color: 0xaaaaaa }));
-        nozzle.position.y = 1.5;
-        group.add(nozzle);
+        // Decorative trees scattered around
+        const treePositions = [
+            { x: 15, z: 15 }, { x: -15, z: 15 }, { x: 15, z: -15 }, { x: -15, z: -15 },
+            { x: 25, z: 5 }, { x: -25, z: 5 }, { x: 25, z: -5 }, { x: -25, z: -5 },
+            { x: 10, z: 25 }, { x: -10, z: -25 }, { x: 30, z: 15 }, { x: -30, z: 15 }
+        ];
+        treePositions.forEach(pos => {
+            const tree = this.createParkTree();
+            tree.position.set(pos.x, 0, pos.z);
+            tree.rotation.y = Math.random() * Math.PI * 2;
+            group.add(tree);
+        });
+
+        // Small pond in southeast corner
+        this.createParkPond(group, 20, -18);
+
+        // Playground area in northwest
+        this.createPlayground(group, -22, 18);
+
+        // Trash cans at key points
+        for (let i = 0; i < 6; i++) {
+            const angle = (i / 6) * Math.PI * 2;
+            const x = Math.cos(angle) * 20;
+            const z = Math.sin(angle) * 20;
+            group.add(this.createTrashCan(x, z));
+        }
+
+        // Decorative hedges along paths
+        for (let i = 0; i < 4; i++) {
+            const angle = (i / 4) * Math.PI * 2 + Math.PI / 4;
+            const hedge = this.createHedge();
+            hedge.position.set(Math.cos(angle) * 6, 0, Math.sin(angle) * 6);
+            hedge.rotation.y = angle;
+            group.add(hedge);
+        }
+
+        // Central sculpture on pedestal
+        this.createSculpture(group);
+    }
+
+    createOrnateFountain(group) {
+        const stoneMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.4, metalness: 0.2 });
+        const darkStone = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.5 });
+
+        // Multi-tiered base
+        const base1 = new THREE.Mesh(new THREE.CylinderGeometry(5, 5.5, 1, 32), stoneMat);
+        base1.position.y = 0.5;
+        group.add(base1);
+
+        const base2 = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 4, 0.8, 32), stoneMat);
+        base2.position.y = 1.4;
+        group.add(base2);
+
+        // Water surfaces
+        const waterMat = new THREE.MeshStandardMaterial({
+            color: 0x3399ff,
+            transparent: true,
+            opacity: 0.7,
+            roughness: 0.05,
+            metalness: 0.3
+        });
+        const water1 = new THREE.Mesh(new THREE.CircleGeometry(5.3, 32), waterMat);
+        water1.rotation.x = -Math.PI / 2;
+        water1.position.y = 1.05;
+        group.add(water1);
+
+        const water2 = new THREE.Mesh(new THREE.CircleGeometry(3.8, 32), waterMat.clone());
+        water2.rotation.x = -Math.PI / 2;
+        water2.position.y = 1.85;
+        group.add(water2);
+
+        // Center pillar
+        const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.8, 3, 16), stoneMat);
+        pillar.position.y = 3.3;
+        group.add(pillar);
+
+        // Decorative top bowl
+        const bowl = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.3, 8, 16), darkStone);
+        bowl.rotation.x = Math.PI / 2;
+        bowl.position.y = 4.8;
+        group.add(bowl);
+
+        // Spout
+        const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 0.5, 8), stoneMat);
+        spout.position.y = 5.1;
+        group.add(spout);
+
+        // Water particles (static spray effect)
+        const sprayMat = new THREE.MeshStandardMaterial({ color: 0xaaddff, transparent: true, opacity: 0.6 });
+        for (let i = 0; i < 24; i++) {
+            const angle = (i / 24) * Math.PI * 2;
+            const radius = 1.5 + Math.random() * 0.5;
+            const drop = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6), sprayMat);
+            drop.position.set(Math.cos(angle) * radius, 5.5 + Math.random() * 0.5, Math.sin(angle) * radius);
+            group.add(drop);
+        }
+
+        // Corner ornaments on base
+        for (let i = 0; i < 4; i++) {
+            const angle = (i / 4) * Math.PI * 2;
+            const orn = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), darkStone);
+            orn.position.set(Math.cos(angle) * 4.5, 1.2, Math.sin(angle) * 4.5);
+            group.add(orn);
+        }
+
+        // Fountain collision
+        const fountainCollider = new THREE.Mesh(
+            new THREE.CylinderGeometry(5.5, 5.5, 5, 16),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        fountainCollider.position.y = 2.5;
+        fountainCollider.userData = { isCollisionBox: true, type: 'Fountain' };
+        group.add(fountainCollider);
+        this.collisionObjects.push(fountainCollider);
+    }
+
+    createParkLamp(group, x, z) {
+        const lampGroup = new THREE.Group();
+        const poleMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.6, roughness: 0.4 });
+
+        // Ornate pole
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 4, 8), poleMat);
+        pole.position.y = 2;
+        lampGroup.add(pole);
+
+        // Decorative base
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.35, 0.4, 8), poleMat);
+        base.position.y = 0.2;
+        lampGroup.add(base);
+
+        // Ornate arm
+        const arm = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.05, 4, 8, Math.PI), poleMat);
+        arm.position.y = 4;
+        arm.rotation.y = Math.PI / 2;
+        lampGroup.add(arm);
+
+        // Lantern
+        const lanternMat = new THREE.MeshStandardMaterial({
+            color: 0xffffcc,
+            emissive: 0xffaa00,
+            emissiveIntensity: 0.8,
+            transparent: true,
+            opacity: 0.9
+        });
+        const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), lanternMat);
+        lantern.position.y = 4.1;
+        lampGroup.add(lantern);
+
+        // Glass housing
+        const housing = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.2, 0.6, 6), new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8 }));
+        housing.position.y = 4.2;
+        lampGroup.add(housing);
+
+        // Point light
+        const light = new THREE.PointLight(0xffaa44, 1, 15);
+        light.position.y = 4.1;
+        lampGroup.add(light);
+
+        // Park lamp collision
+        const lampCollider = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.3, 0.3, 4.5, 6),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        lampCollider.position.y = 2.25;
+        lampCollider.userData = { isCollisionBox: true, type: 'ParkLamp' };
+        lampGroup.add(lampCollider);
+        this.collisionObjects.push(lampCollider);
+
+        lampGroup.position.set(x, 0, z);
+        group.add(lampGroup);
+    }
+
+    createParkBench() {
+        const benchGroup = new THREE.Group();
+        const woodMat = new THREE.MeshStandardMaterial({ color: 0x6b4423, roughness: 0.8 });
+        const metalMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.7, roughness: 0.3 });
+
+        // Seat slats
+        for (let i = 0; i < 4; i++) {
+            const slat = new THREE.Mesh(new THREE.BoxGeometry(3, 0.1, 0.4), woodMat);
+            slat.position.set(0, 0.6, -0.6 + i * 0.45);
+            benchGroup.add(slat);
+        }
+
+        // Back slats
+        for (let i = 0; i < 3; i++) {
+            const slat = new THREE.Mesh(new THREE.BoxGeometry(3, 0.1, 0.3), woodMat);
+            slat.position.set(0, 0.9 + i * 0.4, -0.7);
+            benchGroup.add(slat);
+        }
+
+        // Metal supports
+        for (let x of [-1.2, 0, 1.2]) {
+            const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.6, 0.8), metalMat);
+            leg.position.set(x, 0.3, -0.3);
+            benchGroup.add(leg);
+        }
+
+        // Armrests
+        for (let side of [-1.5, 1.5]) {
+            const arm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.4, 1.5), metalMat);
+            arm.position.set(side, 0.8, -0.15);
+            benchGroup.add(arm);
+        }
+
+        // Bench collision
+        const benchCollider = new THREE.Mesh(
+            new THREE.BoxGeometry(3.2, 1.5, 1.5),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        benchCollider.position.set(0, 0.75, -0.15);
+        benchCollider.userData = { isCollisionBox: true, type: 'ParkBench' };
+        benchGroup.add(benchCollider);
+        this.collisionObjects.push(benchCollider);
+
+        return benchGroup;
+    }
+
+    createDetailedFlowerBed(group, x, z) {
+        const bedGroup = new THREE.Group();
+        const edgeMat = new THREE.MeshStandardMaterial({ color: 0x887766, roughness: 0.9 });
+
+        // Circular flower bed edge
+        const edge = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.2, 6, 12), edgeMat);
+        edge.rotation.x = Math.PI / 2;
+        edge.position.y = 0.2;
+        bedGroup.add(edge);
+
+        // Soil
+        const soil = new THREE.Mesh(
+            new THREE.CircleGeometry(1.4, 12),
+            new THREE.MeshStandardMaterial({ color: 0x553322, roughness: 1 })
+        );
+        soil.rotation.x = -Math.PI / 2;
+        soil.position.y = 0.15;
+        bedGroup.add(soil);
+
+        // Various flowers
+        const flowerColors = [0xff4466, 0xff8844, 0xffcc22, 0xaa44ff, 0xff66aa, 0x66aaff, 0xffffff, 0xff5555];
+        for (let i = 0; i < 8; i++) {
+            const angle = (i / 8) * Math.PI * 2;
+            const r = 0.5 + Math.random() * 0.7;
+            const fx = Math.cos(angle) * r;
+            const fz = Math.sin(angle) * r;
+
+            // Stem
+            const stem = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.02, 0.03, 0.5, 4),
+                new THREE.MeshStandardMaterial({ color: 0x338822 })
+            );
+            stem.position.set(fx, 0.4, fz);
+            bedGroup.add(stem);
+
+            // Flower head
+            const flower = new THREE.Mesh(
+                new THREE.SphereGeometry(0.15 + Math.random() * 0.1, 6, 6),
+                new THREE.MeshStandardMaterial({ color: flowerColors[i % flowerColors.length], roughness: 0.8 })
+            );
+            flower.position.set(fx, 0.65 + Math.random() * 0.1, fz);
+            bedGroup.add(flower);
+        }
+
+        bedGroup.position.set(x, 0, z);
+        group.add(bedGroup);
+    }
+
+    createParkTree() {
+        const treeGroup = new THREE.Group();
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3a1a, roughness: 0.9 });
+
+        // Curved trunk
+        const trunkHeight = 3 + Math.random() * 2;
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.4, trunkHeight, 8), trunkMat);
+        trunk.position.y = trunkHeight / 2;
+        trunk.castShadow = true;
+        treeGroup.add(trunk);
+
+        // Layered canopy (3 layers for fullness)
+        const leafColors = [0x2d5a1e, 0x3a7a2a, 0x4a8a3a, 0x2a6a22];
+        const layers = [
+            { y: trunkHeight + 0.5, r: 2.5, color: 0 },
+            { y: trunkHeight - 0.5, r: 3, color: 1 },
+            { y: trunkHeight - 1.5, r: 2.8, color: 2 }
+        ];
+
+        layers.forEach(layer => {
+            const leaves = new THREE.Mesh(
+                new THREE.SphereGeometry(layer.r, 8, 6),
+                new THREE.MeshStandardMaterial({
+                    color: leafColors[layer.color],
+                    roughness: 0.85,
+                    flatShading: true
+                })
+            );
+            leaves.position.set(
+                (Math.random() - 0.5) * 0.5,
+                layer.y,
+                (Math.random() - 0.5) * 0.5
+            );
+            leaves.scale.y = 0.7;
+            leaves.castShadow = true;
+            treeGroup.add(leaves);
+        });
+
+        // Small bushes at base
+        for (let i = 0; i < 3; i++) {
+            const angle = (i / 3) * Math.PI * 2;
+            const bush = new THREE.Mesh(
+                new THREE.SphereGeometry(0.6, 6, 4),
+                new THREE.MeshStandardMaterial({ color: 0x3a7a2a, flatShading: true })
+            );
+            bush.position.set(Math.cos(angle) * 0.5, 0.3, Math.sin(angle) * 0.5);
+            bush.scale.y = 0.6;
+            treeGroup.add(bush);
+        }
+
+        // Park tree collision
+        const treeCollider = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.6, 0.6, trunkHeight + 2, 6),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        treeCollider.position.y = (trunkHeight + 2) / 2;
+        treeCollider.userData = { isCollisionBox: true, type: 'ParkTree' };
+        treeGroup.add(treeCollider);
+        this.collisionObjects.push(treeCollider);
+
+        return treeGroup;
+    }
+
+    createParkPond(group, x, z) {
+        const pondGroup = new THREE.Group();
+
+        // Pond basin
+        const basinMat = new THREE.MeshStandardMaterial({ color: 0x666655, roughness: 0.9 });
+        const basin = new THREE.Mesh(new THREE.TorusGeometry(4, 0.5, 8, 16), basinMat);
+        basin.rotation.x = Math.PI / 2;
+        basin.position.y = 0.2;
+        pondGroup.add(basin);
+
+        // Water
+        const waterMat = new THREE.MeshStandardMaterial({
+            color: 0x2277aa,
+            transparent: true,
+            opacity: 0.8,
+            roughness: 0.05,
+            metalness: 0.4
+        });
+        const water = new THREE.Mesh(new THREE.CircleGeometry(3.8, 16), waterMat);
+        water.rotation.x = -Math.PI / 2;
+        water.position.y = 0.15;
+        pondGroup.add(water);
+
+        // Lily pads
+        for (let i = 0; i < 5; i++) {
+            const angle = (i / 5) * Math.PI * 2;
+            const r = 1 + Math.random() * 2;
+            const lily = new THREE.Mesh(
+                new THREE.CircleGeometry(0.4, 8),
+                new THREE.MeshStandardMaterial({ color: 0x22aa33, roughness: 0.8 })
+            );
+            lily.rotation.x = -Math.PI / 2;
+            lily.position.set(Math.cos(angle) * r, 0.17, Math.sin(angle) * r);
+            pondGroup.add(lily);
+        }
+
+        // Lily flowers
+        const lilyFlower = new THREE.Mesh(
+            new THREE.SphereGeometry(0.15, 6, 4),
+            new THREE.MeshStandardMaterial({ color: 0xff66aa })
+        );
+        lilyFlower.position.set(1, 0.25, 1.5);
+        pondGroup.add(lilyFlower);
+
+        // Decorative rocks around pond
+        const rockMat = new THREE.MeshStandardMaterial({ color: 0x777766, roughness: 0.95 });
+        for (let i = 0; i < 8; i++) {
+            const angle = (i / 8) * Math.PI * 2;
+            const rock = new THREE.Mesh(
+                new THREE.SphereGeometry(0.3 + Math.random() * 0.3, 5, 4),
+                rockMat
+            );
+            rock.position.set(Math.cos(angle) * 4.2, 0.15, Math.sin(angle) * 4.2);
+            rock.scale.y = 0.5;
+            pondGroup.add(rock);
+        }
+
+        // Small willow tree beside pond
+        const willow = this.createParkTree();
+        willow.position.set(5, 0, 5);
+        willow.scale.set(1.3, 1.3, 1.3);
+        pondGroup.add(willow);
+
+        // Pond collision
+        const pondCollider = new THREE.Mesh(
+            new THREE.CylinderGeometry(4.5, 4.5, 1, 16),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        pondCollider.position.y = 0.5;
+        pondCollider.userData = { isCollisionBox: true, type: 'ParkPond' };
+        pondGroup.add(pondCollider);
+        this.collisionObjects.push(pondCollider);
+
+        pondGroup.position.set(x, 0, z);
+        group.add(pondGroup);
+    }
+
+    createPlayground(group, x, z) {
+        const playGroup = new THREE.Group();
+        const metalMat = new THREE.MeshStandardMaterial({ color: 0xcc4422, roughness: 0.5 });
+        const yellowMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 0.6 });
+        const blueMat = new THREE.MeshStandardMaterial({ color: 0x3366cc, roughness: 0.5 });
+
+        // Sandbox area
+        const sandMat = new THREE.MeshStandardMaterial({ color: 0xddcc99, roughness: 1 });
+        const sandbox = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 0.3, 12), sandMat);
+        sandbox.position.set(0, 0.15, 0);
+        playGroup.add(sandbox);
+
+        // Sandbox edge
+        const sandEdge = new THREE.Mesh(
+            new THREE.TorusGeometry(3, 0.2, 6, 12),
+            yellowMat
+        );
+        sandEdge.rotation.x = Math.PI / 2;
+        sandEdge.position.y = 0.3;
+        playGroup.add(sandEdge);
+
+        // Slide
+        const slideGroup = new THREE.Group();
+        slideGroup.position.set(5, 0, 0);
+
+        // Platform
+        const platform = new THREE.Mesh(new THREE.BoxGeometry(2, 2.5, 2), blueMat);
+        platform.position.y = 1.25;
+        slideGroup.add(platform);
+
+        // Ladder
+        for (let i = 0; i < 5; i++) {
+            const rung = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.05), yellowMat);
+            rung.position.set(1, 0.5 + i * 0.45, -1);
+            slideGroup.add(rung);
+        }
+
+        // Slide surface
+        const slideSurface = new THREE.Mesh(
+            new THREE.BoxGeometry(1.2, 0.1, 3),
+            metalMat
+        );
+        slideSurface.position.set(0, 2.5, 1.5);
+        slideSurface.rotation.x = Math.PI / 6;
+        slideGroup.add(slideSurface);
+
+        // Slide sides
+        for (let side of [-0.6, 0.6]) {
+            const slideSide = new THREE.Mesh(
+                new THREE.BoxGeometry(0.05, 0.3, 3),
+                yellowMat
+            );
+            slideSide.position.set(side, 2.65, 1.5);
+            slideSide.rotation.x = Math.PI / 6;
+            slideGroup.add(slideSide);
+        }
+
+        playGroup.add(slideGroup);
+
+        // Swing set
+        const swingGroup = new THREE.Group();
+        swingGroup.position.set(-4, 0, 0);
+
+        // A-frame
+        for (let side of [-1.5, 1.5]) {
+            const leg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3, 6), metalMat);
+            leg1.position.set(side, 1.5, -0.5);
+            leg1.rotation.z = side * 0.15;
+            swingGroup.add(leg1);
+
+            const leg2 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3, 6), metalMat);
+            leg2.position.set(side, 1.5, 0.5);
+            leg2.rotation.z = -side * 0.15;
+            swingGroup.add(leg2);
+        }
+
+        // Top bar
+        const topBar = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 3.5, 6), yellowMat);
+        topBar.rotation.x = Math.PI / 2;
+        topBar.position.y = 3;
+        swingGroup.add(topBar);
+
+        // Swing chains and seats
+        for (let i = -1; i <= 1; i += 2) {
+            const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.3), blueMat);
+            seat.position.set(i * 0.8, 1, 0);
+            swingGroup.add(seat);
+
+            for (let chain of [-0.2, 0.2]) {
+                const chainLink = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.02, 0.02, 2, 4),
+                    metalMat
+                );
+                chainLink.position.set(i * 0.8 + chain, 2, 0);
+                swingGroup.add(chainLink);
+            }
+        }
+
+        playGroup.add(swingGroup);
+
+        // Playground collision
+        const playgroundCollider = new THREE.Mesh(
+            new THREE.BoxGeometry(10, 3, 10),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        playgroundCollider.position.y = 1.5;
+        playgroundCollider.userData = { isCollisionBox: true, type: 'Playground' };
+        playGroup.add(playgroundCollider);
+        this.collisionObjects.push(playgroundCollider);
+
+        playGroup.position.set(x, 0, z);
+        group.add(playGroup);
+    }
+
+    createTrashCan(x, z) {
+        const canGroup = new THREE.Group();
+        const mat = new THREE.MeshStandardMaterial({ color: 0x336633, roughness: 0.8 });
+
+        // Body
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.25, 0.8, 8), mat);
+        body.position.y = 0.4;
+        canGroup.add(body);
+
+        // Lid
+        const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.05, 8), mat);
+        lid.position.y = 0.82;
+        canGroup.add(lid);
+
+        // Rim
+        const rim = new THREE.Mesh(
+            new THREE.TorusGeometry(0.28, 0.03, 4, 8),
+            new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.6 })
+        );
+        rim.rotation.x = Math.PI / 2;
+        rim.position.y = 0.85;
+        canGroup.add(rim);
+
+        // Trash can collision
+        const trashCollider = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.35, 0.35, 0.9, 6),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        trashCollider.position.y = 0.45;
+        trashCollider.userData = { isCollisionBox: true, type: 'TrashCan' };
+        canGroup.add(trashCollider);
+        this.collisionObjects.push(trashCollider);
+
+        canGroup.position.set(x, 0, z);
+        return canGroup;
+    }
+
+    createHedge() {
+        const hedgeGroup = new THREE.Group();
+        const hedgeMat = new THREE.MeshStandardMaterial({ color: 0x2a6a1a, roughness: 0.9, flatShading: true });
+
+        // Trimmed rectangular hedge
+        const body = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 0.5), hedgeMat);
+        body.position.y = 0.5;
+        body.castShadow = true;
+        hedgeGroup.add(body);
+
+        // Rounded top
+        const top = new THREE.Mesh(new THREE.SphereGeometry(0.35, 6, 4), hedgeMat);
+        top.position.set(0.7, 1, 0);
+        top.scale.set(1, 0.7, 0.7);
+        hedgeGroup.add(top);
+
+        const top2 = top.clone();
+        top2.position.set(-0.7, 1, 0);
+        hedgeGroup.add(top2);
+
+        // Hedge collision
+        const hedgeCollider = new THREE.Mesh(
+            new THREE.BoxGeometry(2, 1.2, 0.6),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        hedgeCollider.position.y = 0.6;
+        hedgeCollider.userData = { isCollisionBox: true, type: 'Hedge' };
+        hedgeGroup.add(hedgeCollider);
+        this.collisionObjects.push(hedgeCollider);
+
+        return hedgeGroup;
+    }
+
+    createSculpture(group) {
+        const sculptureGroup = new THREE.Group();
+        const bronzeMat = new THREE.MeshStandardMaterial({ color: 0x8b6914, metalness: 0.8, roughness: 0.3 });
+        const stoneMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.5 });
+
+        // Stone pedestal
+        const pedestal = new THREE.Mesh(new THREE.BoxGeometry(2, 1.5, 2), stoneMat);
+        pedestal.position.y = 0.75;
+        pedestal.castShadow = true;
+        sculptureGroup.add(pedestal);
+
+        // Pedestal trim
+        const trim = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.2, 2.3), new THREE.MeshStandardMaterial({ color: 0xbbbbbb }));
+        trim.position.y = 1.6;
+        sculptureGroup.add(trim);
+
+        // Abstract sphere sculpture
+        const mainSphere = new THREE.Mesh(new THREE.SphereGeometry(1.2, 16, 16), bronzeMat);
+        mainSphere.position.y = 3;
+        mainSphere.castShadow = true;
+        sculptureGroup.add(mainSphere);
+
+        // Orbiting smaller spheres
+        const orbitRadii = [1.8, 2.2, 1.5];
+        const orbitAngles = [0, Math.PI * 0.66, Math.PI * 1.33];
+        const sizes = [0.3, 0.25, 0.35];
+
+        for (let i = 0; i < 3; i++) {
+            const smallSphere = new THREE.Mesh(new THREE.SphereGeometry(sizes[i], 8, 8), bronzeMat);
+            smallSphere.position.set(
+                Math.cos(orbitAngles[i]) * orbitRadii[i],
+                3 + Math.sin(orbitAngles[i]) * 0.5,
+                Math.sin(orbitAngles[i]) * orbitRadii[i]
+            );
+            smallSphere.castShadow = true;
+            sculptureGroup.add(smallSphere);
+        }
+
+        // Abstract ring
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.1, 8, 24), bronzeMat);
+        ring.position.y = 3;
+        ring.rotation.x = Math.PI / 4;
+        sculptureGroup.add(ring);
+
+        // Sculpture collision
+        const sculptureCollider = new THREE.Mesh(
+            new THREE.BoxGeometry(3, 4, 3),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        sculptureCollider.position.y = 2;
+        sculptureCollider.userData = { isCollisionBox: true, type: 'Sculpture' };
+        sculptureGroup.add(sculptureCollider);
+        this.collisionObjects.push(sculptureCollider);
+
+        group.add(sculptureGroup);
     }
 
 
@@ -296,110 +979,6 @@ export class World {
         back.position.set(0, 1.1, -0.6);
         group.add(seat, back);
         return group;
-    }
-
-    createModernHouse(group) {
-        // Floor
-        const floorGeo = new THREE.BoxGeometry(16, 0.4, 16);
-        const floorMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.2 });
-        const floor = new THREE.Mesh(floorGeo, floorMat);
-        floor.position.y = 0.2;
-        floor.receiveShadow = true;
-        group.add(floor);
-
-        // Roof
-        const roofGeo = new THREE.BoxGeometry(18, 0.5, 18);
-        const roofMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
-        const roof = new THREE.Mesh(roofGeo, roofMat);
-        roof.position.y = 5.25;
-        roof.castShadow = true;
-        group.add(roof);
-
-        // Walls (Glass and concrete)
-        const wallMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
-        const glassMat = new THREE.MeshStandardMaterial({ color: 0x88ccff, transparent: true, opacity: 0.3, roughness: 0.1 });
-
-        // Back Wall
-        const backWall = new THREE.Mesh(new THREE.BoxGeometry(16, 5, 0.5), wallMat);
-        backWall.position.set(0, 2.7, -7.75);
-        backWall.castShadow = true;
-        group.add(backWall);
-
-        // Side Wall
-        const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5, 16), wallMat);
-        sideWall.position.set(-7.75, 2.7, 0);
-        sideWall.castShadow = true;
-        group.add(sideWall);
-
-        // Front Glass Wall
-        const frontGlass = new THREE.Mesh(new THREE.BoxGeometry(16, 5, 0.2), glassMat);
-        frontGlass.position.set(0, 2.7, 7.9);
-        group.add(frontGlass);
-
-        // Other Side Glass Wall
-        const rightGlass = new THREE.Mesh(new THREE.BoxGeometry(0.2, 5, 16), glassMat);
-        rightGlass.position.set(7.9, 2.7, 0);
-        group.add(rightGlass);
-
-        // Interactive Furniture
-        // 1. Bed
-        const bedGrp = new THREE.Group();
-        bedGrp.position.set(-5, 0.4, -5);
-        const bedFrame = new THREE.Mesh(new THREE.BoxGeometry(3, 0.5, 5), new THREE.MeshStandardMaterial({ color: 0x5c4033 }));
-        bedFrame.position.y = 0.25;
-        const mattress = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.4, 4.8), new THREE.MeshStandardMaterial({ color: 0xffffff }));
-        mattress.position.y = 0.7;
-        bedGrp.add(bedFrame, mattress);
-        bedGrp.userData = { type: 'Bed', action: '睡觉' };
-        this.buildings.push(bedGrp);
-        group.add(bedGrp);
-
-        // 2. Sofa
-        const sofaGrp = new THREE.Group();
-        sofaGrp.position.set(3, 0.4, -5);
-        const sofaBase = new THREE.Mesh(new THREE.BoxGeometry(4, 0.6, 2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-        sofaBase.position.y = 0.3;
-        const sofaBack = new THREE.Mesh(new THREE.BoxGeometry(4, 1.2, 0.5), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-        sofaBack.position.set(0, 0.9, -0.75);
-        sofaGrp.add(sofaBase, sofaBack);
-        sofaGrp.userData = { type: 'Sofa', action: '休息' };
-        this.buildings.push(sofaGrp);
-        group.add(sofaGrp);
-
-        // 3. Kitchen Table
-        const kitchenGrp = new THREE.Group();
-        kitchenGrp.position.set(3, 0.4, 3);
-        const tableTop = new THREE.Mesh(new THREE.BoxGeometry(3, 0.2, 2), new THREE.MeshStandardMaterial({ color: 0xdddddd }));
-        tableTop.position.y = 1.2;
-        const legMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
-        const lgA = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.2), legMat); lgA.position.set(-1.3, 0.6, -0.8);
-        const lgB = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.2), legMat); lgB.position.set(1.3, 0.6, -0.8);
-        const lgC = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.2), legMat); lgC.position.set(-1.3, 0.6, 0.8);
-        const lgD = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.2), legMat); lgD.position.set(1.3, 0.6, 0.8);
-        kitchenGrp.add(tableTop, lgA, lgB, lgC, lgD);
-        kitchenGrp.userData = { type: 'Kitchen', action: '吃饭' };
-        this.buildings.push(kitchenGrp);
-        group.add(kitchenGrp);
-
-        // 4. Desk (Work)
-        const deskGrp = new THREE.Group();
-        deskGrp.position.set(-5, 0.4, 3);
-        const deskTop = new THREE.Mesh(new THREE.BoxGeometry(2, 0.1, 4), new THREE.MeshStandardMaterial({ color: 0x8b5a2b }));
-        deskTop.position.y = 1.0;
-        const dgA = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.0), legMat); dgA.position.set(-0.8, 0.5, -1.8);
-        const dgB = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.0), legMat); dgB.position.set(0.8, 0.5, -1.8);
-        const dgC = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.0), legMat); dgC.position.set(-0.8, 0.5, 1.8);
-        const dgD = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.0), legMat); dgD.position.set(0.8, 0.5, 1.8);
-        deskGrp.add(deskTop, dgA, dgB, dgC, dgD);
-        deskGrp.userData = { type: 'Desk', action: '工作' };
-        this.buildings.push(deskGrp);
-        group.add(deskGrp);
-
-        // Add walls dynamically to buildings for collision
-        [backWall, sideWall, frontGlass, rightGlass].forEach(w => {
-            w.userData = { type: 'Wall', label: '墙壁' };
-            this.buildings.push(w);
-        });
     }
 
     createLabel(text) {
@@ -503,6 +1082,16 @@ export class World {
         topLeaves.receiveShadow = true;
         treeGroup.add(topLeaves);
 
+        // Collision box for tree trunk
+        const trunkCollider = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.8, 0.8, trunkHeight + 2, 6),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        trunkCollider.position.y = (trunkHeight + 2) / 2;
+        trunkCollider.userData = { isCollisionBox: true, type: 'Tree' };
+        treeGroup.add(trunkCollider);
+        this.collisionObjects.push(trunkCollider);
+
         return treeGroup;
     }
 
@@ -587,33 +1176,164 @@ export class World {
 
     createLake() {
         const lakeGroup = new THREE.Group();
-        const lakeRadius = 45;
-        const lakeCenter = new THREE.Vector3(150, 0, 150);
+        const lakeRadius = 22;
+        const lakeCenter = new THREE.Vector3(0, 0, 0);
 
-        // Water
-        const waterGeo = new THREE.CircleGeometry(lakeRadius, 32);
-        const waterMat = new THREE.MeshStandardMaterial({
-            color: 0x1e90ff,
+        // Multi-depth water layers for realistic look
+        const deepWaterMat = new THREE.MeshStandardMaterial({
+            color: 0x0a4a8a,
             transparent: true,
-            opacity: 0.8,
-            roughness: 0.1,
+            opacity: 0.9,
+            roughness: 0.05,
+            metalness: 0.5
+        });
+        const midWaterMat = new THREE.MeshStandardMaterial({
+            color: 0x1e7abf,
+            transparent: true,
+            opacity: 0.85,
+            roughness: 0.08,
             metalness: 0.4
         });
-        const water = new THREE.Mesh(waterGeo, waterMat);
-        water.rotation.x = -Math.PI / 2;
-        water.position.y = 0.1;
-        lakeGroup.add(water);
-
-        // Shoreline / Pebbles / Sand area around it
-        const shoreGeo = new THREE.RingGeometry(lakeRadius, lakeRadius + 6, 32);
-        const shoreMat = new THREE.MeshStandardMaterial({
-            color: 0xc2b280, // Sand color
-            roughness: 1.0
+        const shallowWaterMat = new THREE.MeshStandardMaterial({
+            color: 0x33aadd,
+            transparent: true,
+            opacity: 0.75,
+            roughness: 0.1,
+            metalness: 0.3
         });
-        const shore = new THREE.Mesh(shoreGeo, shoreMat);
-        shore.rotation.x = -Math.PI / 2;
-        shore.position.y = 0.05;
-        lakeGroup.add(shore);
+
+        // Deep water core
+        const deepWater = new THREE.Mesh(new THREE.CircleGeometry(lakeRadius * 0.6, 48), deepWaterMat);
+        deepWater.rotation.x = -Math.PI / 2;
+        deepWater.position.y = 0.08;
+        lakeGroup.add(deepWater);
+
+        // Mid water ring
+        const midWater = new THREE.Mesh(new THREE.RingGeometry(lakeRadius * 0.55, lakeRadius * 0.8, 48), midWaterMat);
+        midWater.rotation.x = -Math.PI / 2;
+        midWater.position.y = 0.09;
+        lakeGroup.add(midWater);
+
+        // Shallow water edge
+        const shallowWater = new THREE.Mesh(new THREE.RingGeometry(lakeRadius * 0.75, lakeRadius, 48), shallowWaterMat);
+        shallowWater.rotation.x = -Math.PI / 2;
+        shallowWater.position.y = 0.1;
+        lakeGroup.add(shallowWater);
+
+        // Lake bed (visible through shallow water)
+        const lakeBed = new THREE.Mesh(
+            new THREE.CircleGeometry(lakeRadius - 2, 48),
+            new THREE.MeshStandardMaterial({ color: 0x8a7a5a, roughness: 1 })
+        );
+        lakeBed.rotation.x = -Math.PI / 2;
+        lakeBed.position.y = 0.03;
+        lakeGroup.add(lakeBed);
+
+        // Layered shoreline - sand ring
+        const sandMat = new THREE.MeshStandardMaterial({ color: 0xd4c4a0, roughness: 1 });
+        const sand = new THREE.Mesh(new THREE.RingGeometry(lakeRadius, lakeRadius + 4, 64), sandMat);
+        sand.rotation.x = -Math.PI / 2;
+        sand.position.y = 0.06;
+        lakeGroup.add(sand);
+
+        // Pebble ring
+        const pebbleMat = new THREE.MeshStandardMaterial({ color: 0x998877, roughness: 0.95 });
+        const pebbles = new THREE.Mesh(new THREE.RingGeometry(lakeRadius + 3, lakeRadius + 7, 64), pebbleMat);
+        pebbles.rotation.x = -Math.PI / 2;
+        pebbles.position.y = 0.07;
+        lakeGroup.add(pebbles);
+
+        // Grass transition edge
+        const grassEdge = new THREE.Mesh(
+            new THREE.RingGeometry(lakeRadius + 6, lakeRadius + 10, 64),
+            new THREE.MeshStandardMaterial({ color: 0x669944, roughness: 0.95 })
+        );
+        grassEdge.rotation.x = -Math.PI / 2;
+        grassEdge.position.y = 0.06;
+        lakeGroup.add(grassEdge);
+
+        // Decorative rocks around shore
+        const rockMat = new THREE.MeshStandardMaterial({ color: 0x776655, roughness: 0.9, flatShading: true });
+        const darkRock = new THREE.MeshStandardMaterial({ color: 0x554433, roughness: 0.95, flatShading: true });
+        for (let i = 0; i < 60; i++) {
+            const angle = (i / 60) * Math.PI * 2 + (Math.random() - 0.5) * 0.1;
+            const dist = lakeRadius - 2 + Math.random() * 12;
+            const size = 0.3 + Math.random() * 0.8;
+            const rock = new THREE.Mesh(
+                new THREE.SphereGeometry(size, 5, 4),
+                Math.random() > 0.5 ? rockMat : darkRock
+            );
+            rock.position.set(Math.cos(angle) * dist, size * 0.4, Math.sin(angle) * dist);
+            rock.scale.y = 0.4 + Math.random() * 0.3;
+            rock.rotation.y = Math.random() * Math.PI;
+            lakeGroup.add(rock);
+        }
+
+        // Wooden dock/pier
+        this.createLakeDock(lakeGroup, 0, lakeRadius + 2, 0);
+
+        // Stone bridge crossing the lake center
+        this.createLakeBridge(lakeGroup, 0, 0, 0);
+
+        // Reeds and cattails in clusters
+        for (let i = 0; i < 8; i++) {
+            const angle = (i / 8) * Math.PI * 2 + Math.random() * 0.3;
+            const dist = lakeRadius - 3 + Math.random() * 3;
+            this.createReedCluster(lakeGroup, Math.cos(angle) * dist, Math.sin(angle) * dist);
+        }
+
+        // Lily pads and lotus flowers scattered on water
+        for (let i = 0; i < 25; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = Math.random() * (lakeRadius - 10);
+            const x = Math.cos(angle) * dist;
+            const z = Math.sin(angle) * dist;
+
+            // Lily pad
+            const lily = new THREE.Mesh(
+                new THREE.CircleGeometry(0.6 + Math.random() * 0.4, 8),
+                new THREE.MeshStandardMaterial({ color: 0x22aa44, roughness: 0.8, side: THREE.DoubleSide })
+            );
+            lily.rotation.x = -Math.PI / 2;
+            lily.position.set(x, 0.13, z);
+            lily.rotation.z = Math.random() * Math.PI;
+            lakeGroup.add(lily);
+
+            // Lotus flower (every 3rd lily)
+            if (i % 3 === 0) {
+                const lotus = this.createLotusFlower();
+                lotus.position.set(x + (Math.random() - 0.5) * 0.3, 0.15, z + (Math.random() - 0.5) * 0.3);
+                lakeGroup.add(lotus);
+            }
+        }
+
+        // Fishing spots removed - benches/chairs were blocking bridge access
+
+        // Stone pathway around lake
+        this.createLakePath(lakeGroup, lakeRadius + 10);
+
+        // Lake lanterns along path
+        for (let i = 0; i < 12; i++) {
+            const angle = (i / 12) * Math.PI * 2;
+            const x = Math.cos(angle) * (lakeRadius + 9);
+            const z = Math.sin(angle) * (lakeRadius + 9);
+            this.createStoneLantern(lakeGroup, x, z);
+        }
+
+        // Small waterfall/stream feature on northwest side
+        this.createWaterfall(lakeGroup, -35, -30, Math.PI / 4);
+
+        // Willow trees near shore
+        for (let i = 0; i < 6; i++) {
+            const angle = (i / 6) * Math.PI * 2 + Math.random() * 0.2;
+            const dist = lakeRadius + 5 + Math.random() * 5;
+            const willow = this.createWillowTree();
+            willow.position.set(Math.cos(angle) * dist, 0, Math.sin(angle) * dist);
+            willow.rotation.y = Math.random() * Math.PI;
+            lakeGroup.add(willow);
+        }
+
+        // Decorative stone benches removed - were blocking bridge access
 
         lakeGroup.position.copy(lakeCenter);
         this.scene.add(lakeGroup);
@@ -622,29 +1342,899 @@ export class World {
 
         // Add a label
         const label = this.createLabel('心愿湖 (Lake)');
-        label.position.set(lakeCenter.x, 15, lakeCenter.z);
+        label.position.set(0, 18, -lakeRadius - 15);
         this.scene.add(label);
+
+        // Keep reference for animation
+        this.waterMaterials = [deepWaterMat, midWaterMat, shallowWaterMat];
+    }
+
+    createLakeIsland(parent, x, z, radius, trees) {
+        const islandGroup = new THREE.Group();
+
+        // Island base rising from water
+        const islandMat = new THREE.MeshStandardMaterial({ color: 0x99aa66, roughness: 0.9 });
+        const islandBase = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius + 1, 1.5, 16), islandMat);
+        islandBase.position.y = 0.5;
+        islandGroup.add(islandBase);
+
+        // Grassy top
+        const grass = new THREE.Mesh(
+            new THREE.CircleGeometry(radius, 16),
+            new THREE.MeshStandardMaterial({ color: 0x44aa33, roughness: 0.9 })
+        );
+        grass.rotation.x = -Math.PI / 2;
+        grass.position.y = 1.3;
+        islandGroup.add(grass);
+
+        // Rocks around edge
+        const rockMat = new THREE.MeshStandardMaterial({ color: 0x666655, roughness: 0.9, flatShading: true });
+        for (let i = 0; i < 10; i++) {
+            const angle = (i / 10) * Math.PI * 2;
+            const rock = new THREE.Mesh(
+                new THREE.SphereGeometry(0.3 + Math.random() * 0.4, 5, 4),
+                rockMat
+            );
+            rock.position.set(Math.cos(angle) * (radius - 0.5), 0.4, Math.sin(angle) * (radius - 0.5));
+            rock.scale.y = 0.5;
+            islandGroup.add(rock);
+        }
+
+        // Trees on island
+        for (let i = 0; i < trees; i++) {
+            const angle = (i / trees) * Math.PI * 2;
+            const dist = radius * 0.5;
+            const tree = this.createParkTree();
+            tree.position.set(Math.cos(angle) * dist, 1.3, Math.sin(angle) * dist);
+            tree.scale.set(0.8, 0.8, 0.8);
+            islandGroup.add(tree);
+        }
+
+        islandGroup.position.set(x, 0, z);
+        parent.add(islandGroup);
+    }
+
+    createLakeDock(parent, x, z, rotY) {
+        const dockGroup = new THREE.Group();
+        const woodMat = new THREE.MeshStandardMaterial({ color: 0x8b6914, roughness: 0.8 });
+        const darkWood = new THREE.MeshStandardMaterial({ color: 0x6b4f12, roughness: 0.85 });
+
+        // Dock platform extending over water
+        const platform = new THREE.Mesh(new THREE.BoxGeometry(4, 0.2, 12), woodMat);
+        platform.position.y = 0.5;
+        platform.receiveShadow = true;
+        dockGroup.add(platform);
+
+        // Wood plank lines
+        const lineMat = new THREE.MeshStandardMaterial({ color: 0x553300 });
+        for (let i = -5; i <= 5; i += 0.8) {
+            const line = new THREE.Mesh(new THREE.BoxGeometry(4.02, 0.02, 0.05), lineMat);
+            line.position.set(0, 0.61, i);
+            dockGroup.add(line);
+        }
+
+        // Support posts underwater
+        for (let px of [-1.5, 1.5]) {
+            for (let pz of [-4, 0, 4]) {
+                const post = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 1.5, 6), darkWood);
+                post.position.set(px, -0.25, pz);
+                dockGroup.add(post);
+            }
+        }
+
+        // Railings
+        const railMat = new THREE.MeshStandardMaterial({ color: 0x99aa88, metalness: 0.3 });
+        for (let side of [-2, 2]) {
+            // Top rail
+            const topRail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 10), railMat);
+            topRail.position.set(side, 1, 0);
+            dockGroup.add(topRail);
+
+            // Vertical posts
+            for (let pz = -4; pz <= 4; pz += 2) {
+                const vPost = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1, 4), railMat);
+                vPost.position.set(side, 0.5, pz);
+                dockGroup.add(vPost);
+            }
+        }
+
+        // Bollards for tying boats
+        for (let side of [-1.5, 1.5]) {
+            const bollard = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.6, 8), darkWood);
+            bollard.position.set(side, 0.9, 5.5);
+            dockGroup.add(bollard);
+        }
+
+        // Small fishing net decoration
+        const netGroup = new THREE.Group();
+        for (let i = 0; i < 6; i++) {
+            const rope = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.01, 0.01, 1.5, 3),
+                new THREE.MeshStandardMaterial({ color: 0x887766 })
+            );
+            rope.position.set(1.5 + (Math.random() - 0.5) * 0.5, 0.6, 4 + i * 0.25);
+            netGroup.add(rope);
+        }
+        dockGroup.add(netGroup);
+
+        // Dock collision
+        const dockCollider = new THREE.Mesh(
+            new THREE.BoxGeometry(4.5, 1.2, 12.5),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        dockCollider.position.y = 0.6;
+        dockCollider.userData = { isCollisionBox: true, type: 'Dock' };
+        dockGroup.add(dockCollider);
+        this.collisionObjects.push(dockCollider);
+
+        dockGroup.position.set(x, 0, z);
+        dockGroup.rotation.y = rotY;
+        parent.add(dockGroup);
+    }
+
+    createLakeBridge(parent, x, z, rotY) {
+        const bridgeGroup = new THREE.Group();
+        const stoneMat = new THREE.MeshStandardMaterial({ color: 0xd5d0c8, roughness: 0.55 });
+        const stoneDark = new THREE.MeshStandardMaterial({ color: 0x999990, roughness: 0.65 });
+        const stoneLight = new THREE.MeshStandardMaterial({ color: 0xeae6de, roughness: 0.4 });
+        const redMat = new THREE.MeshStandardMaterial({ color: 0xb82222, roughness: 0.5 });
+        const goldMat = new THREE.MeshStandardMaterial({ color: 0xddaa44, roughness: 0.25, metalness: 0.6 });
+
+        const bridgeWidth = 5;
+        const totalLength = 60;
+        const archHeight = 6;
+        const halfLen = totalLength / 2;
+        const deckThickness = 0.6;
+        const segments = 120;
+
+        // Helper: arch height at any z
+        const archY = (z) => Math.sin(((z + halfLen) / totalLength) * Math.PI) * archHeight;
+
+        // Build bridge with overlapping segments (no gaps)
+        for (let i = 0; i < segments; i++) {
+            const z1 = -halfLen + (i / segments) * totalLength;
+            const z2 = -halfLen + ((i + 1.05) / segments) * totalLength; // 5% overlap
+            const midZ = (z1 + z2) / 2;
+            const segLen = z2 - z1;
+
+            const yTop = archY(midZ) + deckThickness;
+            const yBottom = Math.max(0, archY(midZ) - deckThickness * 0.5);
+
+            // Deck slab
+            const deck = new THREE.Mesh(new THREE.BoxGeometry(bridgeWidth, deckThickness, segLen + 0.05), stoneMat);
+            deck.position.set(0, yTop - deckThickness / 2, midZ);
+            deck.castShadow = true;
+            deck.receiveShadow = true;
+            bridgeGroup.add(deck);
+
+            // Arch fill beneath
+            const fillH = yTop - deckThickness - yBottom;
+            if (fillH > 0.1) {
+                const fill = new THREE.Mesh(
+                    new THREE.BoxGeometry(bridgeWidth - 0.8, fillH, segLen + 0.05),
+                    stoneDark
+                );
+                fill.position.set(0, yBottom + fillH / 2, midZ);
+                fill.castShadow = true;
+                bridgeGroup.add(fill);
+            }
+        }
+
+        // Railing pillars
+        const numBays = 20;
+        const pillarSpacing = totalLength / numBays;
+
+        for (let p = 0; p <= numBays; p++) {
+            const pz = -halfLen + p * pillarSpacing;
+            const py = archY(pz) + deckThickness;
+
+            for (let side of [-1, 1]) {
+                const sx = side * (bridgeWidth / 2);
+                const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.7, 0.12), stoneLight);
+                pillar.position.set(sx, py + 0.35, pz);
+                pillar.castShadow = true;
+                bridgeGroup.add(pillar);
+
+                const ball = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), stoneDark);
+                ball.position.set(sx, py + 0.75, pz);
+                bridgeGroup.add(ball);
+            }
+
+            // Red panels
+            if (p > 0 && p < numBays) {
+                const prevZ = -halfLen + (p - 1) * pillarSpacing;
+                const panelZ = (prevZ + pz) / 2;
+                const panelY = archY(panelZ) + deckThickness + 0.35;
+
+                for (let side of [-1, 1]) {
+                    const panel = new THREE.Mesh(
+                        new THREE.BoxGeometry(0.03, 0.55, pillarSpacing - 0.12),
+                        redMat
+                    );
+                    panel.position.set(side * (bridgeWidth / 2), panelY, panelZ);
+                    bridgeGroup.add(panel);
+                }
+            }
+        }
+
+        // Handrails
+        for (let r = 0; r < 2; r++) {
+            const yOff = 0.1 + r * 0.4;
+            for (let p = 0; p < numBays; p++) {
+                const z1 = -halfLen + p * pillarSpacing;
+                const z2 = -halfLen + (p + 1) * pillarSpacing;
+                const midZ = (z1 + z2) / 2;
+                const y1 = archY(z1) + deckThickness + 0.35 + yOff;
+                const y2 = archY(z2) + deckThickness + 0.35 + yOff;
+                const midY = (y1 + y2) / 2;
+                const segLen = Math.sqrt((z2 - z1) ** 2 + (y2 - y1) ** 2);
+                const angle = Math.atan2(y2 - y1, z2 - z1);
+
+                for (let side of [-1, 1]) {
+                    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, segLen + 0.02), stoneDark);
+                    rail.position.set(side * (bridgeWidth / 2), midY, midZ);
+                    rail.rotation.x = -(angle - Math.PI / 2);
+                    bridgeGroup.add(rail);
+                }
+            }
+        }
+
+        // Center ornament
+        const centerY = archHeight + deckThickness;
+        const dragonBase = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.5, 0.3, 8), stoneDark);
+        dragonBase.position.set(0, centerY + 0.15, 0);
+        bridgeGroup.add(dragonBase);
+
+        for (let i = 0; i < 8; i++) {
+            const angle = (i / 8) * Math.PI * 2;
+            const flame = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 4), goldMat);
+            flame.position.set(Math.cos(angle) * 0.3, centerY + 0.45, Math.sin(angle) * 0.3);
+            flame.scale.set(1, 1.5, 1);
+            bridgeGroup.add(flame);
+        }
+
+        const pearl = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 12), goldMat);
+        pearl.position.set(0, centerY + 0.7, 0);
+        bridgeGroup.add(pearl);
+
+        // Steps at ends
+        for (let end of [-1, 1]) {
+            const startZ = end * halfLen;
+            const numSteps = 12;
+            for (let s = 0; s < numSteps; s++) {
+                const stepZ = startZ + end * (0.7 + s * 1.2);
+                const stepY = -s * 0.3;
+
+                const step = new THREE.Mesh(new THREE.BoxGeometry(bridgeWidth + 1, 0.25, 1.3), stoneMat);
+                step.position.set(0, stepY, stepZ);
+                step.castShadow = true;
+                step.receiveShadow = true;
+                bridgeGroup.add(step);
+
+                const stepCol = new THREE.Mesh(
+                    new THREE.BoxGeometry(bridgeWidth + 1, 0.3, 1.3),
+                    new THREE.MeshBasicMaterial({ visible: false })
+                );
+                stepCol.position.set(0, stepY, stepZ);
+                stepCol.userData = { isCollisionBox: true, type: 'BridgeStep' };
+                bridgeGroup.add(stepCol);
+                this.collisionObjects.push(stepCol);
+
+                for (let side of [-1, 1]) {
+                    const wallH = 0.3 + s * 0.25;
+                    const wall = new THREE.Mesh(new THREE.BoxGeometry(0.2, wallH, 1.3), stoneDark);
+                    wall.position.set(side * (bridgeWidth / 2 + 0.6), stepY - 0.05, stepZ);
+                    wall.castShadow = true;
+                    bridgeGroup.add(wall);
+
+                    const wallCol = new THREE.Mesh(
+                        new THREE.BoxGeometry(0.25, wallH + 0.1, 1.3),
+                        new THREE.MeshBasicMaterial({ visible: false })
+                    );
+                    wallCol.position.set(side * (bridgeWidth / 2 + 0.6), stepY - 0.05, stepZ);
+                    wallCol.userData = { isCollisionBox: true, type: 'BridgeStepWall' };
+                    bridgeGroup.add(wallCol);
+                    this.collisionObjects.push(wallCol);
+                }
+            }
+        }
+
+        // Bridge surface collision object - contains arch formula for smooth walking
+        const bridgeSurface = new THREE.Mesh(
+            new THREE.BoxGeometry(1, 1, 1),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        bridgeSurface.userData = {
+            isCollisionBox: true,
+            type: 'BridgeSurface',
+            bridgeWidth: bridgeWidth,
+            totalLength: totalLength,
+            archHeight: archHeight,
+            deckThickness: deckThickness,
+            halfLen: halfLen
+        };
+        bridgeSurface.position.set(0, 0, 0);
+        bridgeSurface.scale.set(bridgeWidth + 2, archHeight + deckThickness + 2, totalLength + 2);
+        bridgeGroup.add(bridgeSurface);
+        this.collisionObjects.push(bridgeSurface);
+
+        // Bridge collision - deck level (follows arch angle precisely)
+        const colSegments = 80;
+        for (let i = 0; i < colSegments; i++) {
+            const t1 = i / colSegments;
+            const t2 = (i + 1) / colSegments;
+            const z1 = -halfLen + t1 * totalLength;
+            const z2 = -halfLen + t2 * totalLength;
+            const midZ = (z1 + z2) / 2;
+
+            // Calculate arch Y at both ends
+            const y1 = archY(z1) + deckThickness;
+            const y2 = archY(z2) + deckThickness;
+            const midY = (y1 + y2) / 2;
+
+            // Segment length and slope angle
+            const dz = z2 - z1;
+            const dy = y2 - y1;
+            const segLen = Math.sqrt(dz * dz + dy * dy);
+            const slopeAngle = Math.atan2(dy, dz);
+
+            // Collision box - matches deck exactly, rotated to follow slope
+            const colW = bridgeWidth + 0.2;
+            const colH = deckThickness + 0.2;
+            const colD = segLen + 0.05;
+
+            const col = new THREE.Mesh(
+                new THREE.BoxGeometry(colW, colH, colD),
+                new THREE.MeshBasicMaterial({ visible: false })
+            );
+            // Position at center of segment, slightly below top surface
+            col.position.set(0, midY - colH / 2 + 0.1, midZ);
+            // Rotate to match the arch slope
+            col.rotation.x = -slopeAngle;
+            col.userData = { isCollisionBox: true, type: 'Bridge' };
+            bridgeGroup.add(col);
+            this.collisionObjects.push(col);
+        }
+
+        // Bridge collision - arch fill beneath deck (vertical boxes from ground up)
+        const fillSegments = 60;
+        for (let i = 0; i < fillSegments; i++) {
+            const t1 = i / fillSegments;
+            const t2 = (i + 1) / fillSegments;
+            const z1 = -halfLen + t1 * totalLength;
+            const z2 = -halfLen + t2 * totalLength;
+            const midZ = (z1 + z2) / 2;
+            const segLen = z2 - z1;
+
+            // Arch height at this segment (bottom of deck)
+            const archBottom = archY(midZ);
+
+            // Only create collision where arch exists above ground
+            if (archBottom > 0.3) {
+                // Collision fills from ground (y=0) up to deck bottom
+                const colH = archBottom;
+                const colW = bridgeWidth - 0.6;
+
+                const col = new THREE.Mesh(
+                    new THREE.BoxGeometry(colW, colH, segLen + 0.05),
+                    new THREE.MeshBasicMaterial({ visible: false })
+                );
+                // Center vertically between ground and arch bottom
+                col.position.set(0, colH / 2, midZ);
+                col.userData = { isCollisionBox: true, type: 'BridgeFill' };
+                bridgeGroup.add(col);
+                this.collisionObjects.push(col);
+            }
+        }
+
+        // Railing collision - thin boxes along railing height
+        const railColSegments = 40;
+        for (let i = 0; i < railColSegments; i++) {
+            const t1 = i / railColSegments;
+            const t2 = (i + 1) / railColSegments;
+            const z1 = -halfLen + t1 * totalLength;
+            const z2 = -halfLen + t2 * totalLength;
+            const midZ = (z1 + z2) / 2;
+            const segLen = Math.sqrt((z2 - z1) ** 2 + (archY(z2) - archY(z1)) ** 2);
+            const slopeAngle = Math.atan2(archY(z2) - archY(z1), z2 - z1);
+
+            const deckTopY = archY(midZ) + deckThickness;
+            const railBaseY = deckTopY + 0.1;
+            const railTopY = deckTopY + 0.8;
+            const railH = railTopY - railBaseY;
+
+            for (let side of [-1, 1]) {
+                const col = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.15, railH, segLen + 0.05),
+                    new THREE.MeshBasicMaterial({ visible: false })
+                );
+                col.position.set(side * (bridgeWidth / 2), railBaseY + railH / 2, midZ);
+                col.rotation.x = -slopeAngle;
+                col.userData = { isCollisionBox: true, type: 'BridgeRailing' };
+                bridgeGroup.add(col);
+                this.collisionObjects.push(col);
+            }
+        }
+
+        bridgeGroup.position.set(x, 0, z);
+        bridgeGroup.rotation.y = rotY;
+        parent.add(bridgeGroup);
+    }
+
+    createBridgeLantern() {
+        const lanternGroup = new THREE.Group();
+        const metalMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.7, roughness: 0.3 });
+        const glassMat = new THREE.MeshStandardMaterial({
+            color: 0xffddaa,
+            emissive: 0xffaa44,
+            emissiveIntensity: 0.8,
+            transparent: true,
+            opacity: 0.9
+        });
+
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 0.2, 8), metalMat);
+        base.position.y = 0.1;
+        lanternGroup.add(base);
+
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.6, 0.3), glassMat);
+        body.position.y = 0.5;
+        lanternGroup.add(body);
+
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.3, 4), metalMat);
+        roof.position.y = 0.9;
+        roof.rotation.y = Math.PI / 4;
+        lanternGroup.add(roof);
+
+        for (let i = 0; i < 4; i++) {
+            const angle = (i / 4) * Math.PI * 2 + Math.PI / 4;
+            const tassel = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.02, 0.04, 0.4, 4),
+                new THREE.MeshStandardMaterial({ color: 0xcc0000 })
+            );
+            tassel.position.set(Math.cos(angle) * 0.2, 0.1, Math.sin(angle) * 0.2);
+            lanternGroup.add(tassel);
+        }
+
+        return lanternGroup;
+    }
+
+    createReedCluster(parent, x, z) {
+        const reedGroup = new THREE.Group();
+        const stemMat = new THREE.MeshStandardMaterial({ color: 0x557722 });
+
+        for (let i = 0; i < 12; i++) {
+            const height = 1.5 + Math.random() * 1.5;
+            const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, height, 4), stemMat);
+            const rx = (Math.random() - 0.5) * 2;
+            const rz = (Math.random() - 0.5) * 2;
+            stem.position.set(rx, height / 2, rz);
+            stem.rotation.x = (Math.random() - 0.5) * 0.2;
+            stem.rotation.z = (Math.random() - 0.5) * 0.2;
+            reedGroup.add(stem);
+
+            // Reed top
+            if (Math.random() > 0.3) {
+                const top = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.04, 0.06, 0.4, 4),
+                    new THREE.MeshStandardMaterial({ color: 0x774422 })
+                );
+                top.position.set(rx, height + 0.1, rz);
+                reedGroup.add(top);
+            }
+        }
+
+        reedGroup.position.set(x, 0.1, z);
+        parent.add(reedGroup);
+    }
+
+    createLotusFlower() {
+        const lotusGroup = new THREE.Group();
+        const petalColors = [0xff88aa, 0xffaacc, 0xffbbee, 0xff6688];
+
+        // Petals in layers
+        for (let layer = 0; layer < 3; layer++) {
+            const petals = 6 - layer;
+            const size = 0.3 - layer * 0.05;
+            for (let i = 0; i < petals; i++) {
+                const angle = (i / petals) * Math.PI * 2;
+                const petal = new THREE.Mesh(
+                    new THREE.SphereGeometry(size, 6, 4),
+                    new THREE.MeshStandardMaterial({
+                        color: petalColors[layer % petalColors.length],
+                        roughness: 0.6
+                    })
+                );
+                petal.position.set(Math.cos(angle) * size * 0.8, layer * 0.1, Math.sin(angle) * size * 0.8);
+                petal.scale.set(1, 0.4, 1);
+                lotusGroup.add(petal);
+            }
+        }
+
+        // Center
+        const center = new THREE.Mesh(
+            new THREE.SphereGeometry(0.15, 6, 4),
+            new THREE.MeshStandardMaterial({ color: 0xffdd44 })
+        );
+        center.position.y = 0.2;
+        lotusGroup.add(center);
+
+        return lotusGroup;
+    }
+
+    createFishingSpot(parent, x, z, rotY) {
+        const spotGroup = new THREE.Group();
+
+        // Stone platform
+        const platform = new THREE.Mesh(
+            new THREE.BoxGeometry(2, 0.2, 3),
+            new THREE.MeshStandardMaterial({ color: 0x888877, roughness: 0.9 })
+        );
+        platform.position.y = 0.1;
+        spotGroup.add(platform);
+
+        // Wooden bench
+        const bench = this.createParkBench();
+        bench.position.set(0, 0, 1);
+        bench.rotation.y = Math.PI;
+        spotGroup.add(bench);
+
+        // Fishing rod in water
+        const rod = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.02, 0.03, 3, 4),
+            new THREE.MeshStandardMaterial({ color: 0x664422 })
+        );
+        rod.position.set(0, 0.8, -0.5);
+        rod.rotation.x = Math.PI / 4;
+        spotGroup.add(rod);
+
+        // Fishing line
+        const line = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.005, 0.005, 2, 3),
+            new THREE.MeshStandardMaterial({ color: 0xcccccc })
+        );
+        line.position.set(0, 0.2, -2);
+        line.rotation.x = Math.PI / 6;
+        spotGroup.add(line);
+
+        // Cooler box
+        const cooler = new THREE.Mesh(
+            new THREE.BoxGeometry(0.8, 0.5, 0.5),
+            new THREE.MeshStandardMaterial({ color: 0x3366aa })
+        );
+        cooler.position.set(0.6, 0.35, 0.8);
+        spotGroup.add(cooler);
+
+        // Fishing spot collision
+        const fishingCollider = new THREE.Mesh(
+            new THREE.BoxGeometry(3, 1.5, 4),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        fishingCollider.position.y = 0.75;
+        fishingCollider.userData = { isCollisionBox: true, type: 'FishingSpot' };
+        spotGroup.add(fishingCollider);
+        this.collisionObjects.push(fishingCollider);
+
+        spotGroup.position.set(x, 0, z);
+        spotGroup.rotation.y = rotY;
+        parent.add(spotGroup);
+    }
+
+    createLakePath(parent, radius) {
+        const pathMat = new THREE.MeshStandardMaterial({ color: 0x998877, roughness: 0.8 });
+
+        // Circular stone path
+        for (let i = 0; i < 36; i++) {
+            const angle = (i / 36) * Math.PI * 2;
+            const nextAngle = ((i + 1) / 36) * Math.PI * 2;
+
+            const segment = new THREE.Mesh(
+                new THREE.PlaneGeometry(3, radius * (nextAngle - angle) + 0.1),
+                pathMat
+            );
+            segment.rotation.x = -Math.PI / 2;
+            segment.position.y = 0.12;
+
+            // Position at midpoint of segment
+            const midAngle = (angle + nextAngle) / 2;
+            segment.position.x = Math.cos(midAngle) * radius;
+            segment.position.z = Math.sin(midAngle) * radius;
+            segment.rotation.z = -midAngle;
+
+            parent.add(segment);
+        }
+
+        // Stepping stones at intervals
+        for (let i = 0; i < 12; i++) {
+            const angle = (i / 12) * Math.PI * 2;
+            const stone = new THREE.Mesh(
+                new THREE.CircleGeometry(0.5 + Math.random() * 0.3, 8),
+                new THREE.MeshStandardMaterial({ color: 0xaa9988, roughness: 0.85 })
+            );
+            stone.rotation.x = -Math.PI / 2;
+            stone.position.set(Math.cos(angle) * radius, 0.13, Math.sin(angle) * radius);
+            parent.add(stone);
+        }
+    }
+
+    createStoneLantern(parent, x, z) {
+        const lanternGroup = new THREE.Group();
+        const stoneMat = new THREE.MeshStandardMaterial({ color: 0x888877, roughness: 0.7 });
+
+        // Base
+        const base = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.2, 0.6), stoneMat);
+        base.position.y = 0.1;
+        lanternGroup.add(base);
+
+        // Pillar
+        const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 1.2, 6), stoneMat);
+        pillar.position.y = 0.7;
+        lanternGroup.add(pillar);
+
+        // Light housing
+        const housing = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), stoneMat);
+        housing.position.y = 1.5;
+        lanternGroup.add(housing);
+
+        // Glowing light
+        const light = new THREE.Mesh(
+            new THREE.SphereGeometry(0.15, 6, 6),
+            new THREE.MeshStandardMaterial({ color: 0xffffaa, emissive: 0xffaa44, emissiveIntensity: 1 })
+        );
+        light.position.y = 1.5;
+        lanternGroup.add(light);
+
+        // Roof
+        const roof = new THREE.Mesh(
+            new THREE.ConeGeometry(0.5, 0.3, 4),
+            stoneMat
+        );
+        roof.position.y = 1.9;
+        roof.rotation.y = Math.PI / 4;
+        lanternGroup.add(roof);
+
+        // Stone lantern collision
+        const lanternCollider = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.35, 0.35, 2, 6),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        lanternCollider.position.y = 1;
+        lanternCollider.userData = { isCollisionBox: true, type: 'StoneLantern' };
+        lanternGroup.add(lanternCollider);
+        this.collisionObjects.push(lanternCollider);
+
+        lanternGroup.position.set(x, 0, z);
+        parent.add(lanternGroup);
+    }
+
+    createWaterfall(parent, x, z, rotY) {
+        const waterfallGroup = new THREE.Group();
+
+        // Rock formation
+        const rockMat = new THREE.MeshStandardMaterial({ color: 0x665544, roughness: 0.9, flatShading: true });
+        const cliff = new THREE.Mesh(new THREE.BoxGeometry(6, 4, 3), rockMat);
+        cliff.position.y = 2;
+        waterfallGroup.add(cliff);
+
+        // Rock details
+        for (let i = 0; i < 5; i++) {
+            const rock = new THREE.Mesh(
+                new THREE.SphereGeometry(0.5 + Math.random() * 1, 5, 4),
+                rockMat
+            );
+            rock.position.set((Math.random() - 0.5) * 5, Math.random() * 3, (Math.random() - 0.5) * 2);
+            rock.scale.y = 0.6;
+            waterfallGroup.add(rock);
+        }
+
+        // Waterfall stream
+        const waterMat = new THREE.MeshStandardMaterial({
+            color: 0xaaddff,
+            transparent: true,
+            opacity: 0.7,
+            roughness: 0.1
+        });
+        for (let i = 0; i < 5; i++) {
+            const stream = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.15 + Math.random() * 0.1, 0.3, 3.5, 6),
+                waterMat
+            );
+            stream.position.set(-2 + i * 1, 1.5, 0.5);
+            waterfallGroup.add(stream);
+        }
+
+        // Splash pool
+        const pool = new THREE.Mesh(
+            new THREE.CircleGeometry(3, 12),
+            new THREE.MeshStandardMaterial({ color: 0x44aacc, transparent: true, opacity: 0.8, roughness: 0.1 })
+        );
+        pool.rotation.x = -Math.PI / 2;
+        pool.position.set(0, 0.1, 3);
+        waterfallGroup.add(pool);
+
+        // Splash particles
+        const splashMat = new THREE.MeshStandardMaterial({ color: 0xccddff, transparent: true, opacity: 0.6 });
+        for (let i = 0; i < 15; i++) {
+            const drop = new THREE.Mesh(new THREE.SphereGeometry(0.1, 4, 4), splashMat);
+            drop.position.set(
+                (Math.random() - 0.5) * 3,
+                Math.random() * 0.5,
+                2.5 + Math.random() * 2
+            );
+            waterfallGroup.add(drop);
+        }
+
+        // Waterfall collision
+        const waterfallCollider = new THREE.Mesh(
+            new THREE.BoxGeometry(6, 4, 4),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        waterfallCollider.position.set(0, 2, 1.5);
+        waterfallCollider.userData = { isCollisionBox: true, type: 'Waterfall' };
+        waterfallGroup.add(waterfallCollider);
+        this.collisionObjects.push(waterfallCollider);
+
+        waterfallGroup.position.set(x, 0, z);
+        waterfallGroup.rotation.y = rotY;
+        parent.add(waterfallGroup);
+    }
+
+    createWillowTree() {
+        const treeGroup = new THREE.Group();
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3a2a, roughness: 0.9 });
+
+        // Trunk (slightly curved)
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.6, 5, 8), trunkMat);
+        trunk.position.y = 2.5;
+        trunk.rotation.z = 0.1;
+        treeGroup.add(trunk);
+
+        // Drooping branches
+        const branchMat = new THREE.MeshStandardMaterial({ color: 0x336622, roughness: 0.8 });
+        const numBranches = 12;
+        for (let i = 0; i < numBranches; i++) {
+            const angle = (i / numBranches) * Math.PI * 2;
+            const branchLength = 3 + Math.random() * 2;
+
+            // Branch
+            const branch = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.03, 0.08, branchLength, 4),
+                trunkMat
+            );
+            branch.position.set(0, 4.8, 0);
+            branch.rotation.z = Math.PI / 3 + (Math.random() - 0.5) * 0.3;
+            branch.rotation.y = angle;
+            treeGroup.add(branch);
+
+            // Drooping leaves
+            for (let l = 0; l < 5; l++) {
+                const t = l / 5;
+                const leaf = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.4 + Math.random() * 0.3, 5, 4),
+                    new THREE.MeshStandardMaterial({
+                        color: 0x447733 + Math.floor(Math.random() * 0x111111),
+                        roughness: 0.85,
+                        flatShading: true
+                    })
+                );
+                const dropDist = t * branchLength;
+                leaf.position.set(
+                    Math.sin(angle) * Math.sin(Math.PI / 3) * dropDist,
+                    4.8 - t * branchLength * 0.8 - t * t * 2,
+                    Math.cos(angle) * Math.sin(Math.PI / 3) * dropDist
+                );
+                treeGroup.add(leaf);
+            }
+        }
+
+        // Canopy top
+        const canopy = new THREE.Mesh(
+            new THREE.SphereGeometry(2.5, 8, 6),
+            new THREE.MeshStandardMaterial({ color: 0x3a7a2a, roughness: 0.85, flatShading: true })
+        );
+        canopy.position.y = 5;
+        canopy.scale.y = 0.6;
+        treeGroup.add(canopy);
+
+        // Willow tree collision
+        const willowCollider = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.8, 0.8, 5.5, 6),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        willowCollider.position.y = 2.75;
+        willowCollider.userData = { isCollisionBox: true, type: 'WillowTree' };
+        treeGroup.add(willowCollider);
+        this.collisionObjects.push(willowCollider);
+
+        return treeGroup;
+    }
+
+    createStoneBench() {
+        const benchGroup = new THREE.Group();
+        const stoneMat = new THREE.MeshStandardMaterial({ color: 0x999988, roughness: 0.7 });
+
+        // Seat
+        const seat = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.2, 0.8), stoneMat);
+        seat.position.y = 0.6;
+        benchGroup.add(seat);
+
+        // Supports
+        for (let x of [-1, 0, 1]) {
+            const support = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.6, 0.6), stoneMat);
+            support.position.set(x, 0.3, 0);
+            benchGroup.add(support);
+        }
+
+        // Back rest
+        const back = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.6, 0.15), stoneMat);
+        back.position.set(0, 0.9, -0.35);
+        benchGroup.add(back);
+
+        // Stone bench collision
+        const benchCollider = new THREE.Mesh(
+            new THREE.BoxGeometry(2.7, 1, 0.8),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        benchCollider.position.set(0, 0.5, -0.1);
+        benchCollider.userData = { isCollisionBox: true, type: 'StoneBench' };
+        benchGroup.add(benchCollider);
+        this.collisionObjects.push(benchCollider);
+
+        return benchGroup;
     }
 
     createRoads() {
         const roadWidth = 10;
         const roadMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9 });
-        const roadGridSize = 100; // Matching the building spacing
-        const gridBound = 200; // Limits to exactly a 2 or 3 block radius
+        const roadGridSize = 100;
+        const gridBound = 200;
+        const lakeSkipRadius = 30; // Keep roads away from lake
 
+        // Vertical roads (along Z)
         for (let x = -gridBound; x <= gridBound; x += roadGridSize) {
-            const road = new THREE.Mesh(new THREE.PlaneGeometry(roadWidth, gridBound * 2), roadMat);
-            road.rotation.x = -Math.PI / 2;
-            road.position.set(x, 0.05, 0);
-            road.receiveShadow = true;
-            this.scene.add(road);
+            if (x === 0) {
+                // Split road into two segments with a gap for the lake
+                const road1 = new THREE.Mesh(new THREE.PlaneGeometry(roadWidth, gridBound - lakeSkipRadius), roadMat);
+                road1.rotation.x = -Math.PI / 2;
+                road1.position.set(x, 0.05, -(gridBound + lakeSkipRadius) / 2);
+                road1.receiveShadow = true;
+                this.scene.add(road1);
+
+                const road2 = new THREE.Mesh(new THREE.PlaneGeometry(roadWidth, gridBound - lakeSkipRadius), roadMat);
+                road2.rotation.x = -Math.PI / 2;
+                road2.position.set(x, 0.05, (gridBound + lakeSkipRadius) / 2);
+                road2.receiveShadow = true;
+                this.scene.add(road2);
+            } else {
+                const road = new THREE.Mesh(new THREE.PlaneGeometry(roadWidth, gridBound * 2), roadMat);
+                road.rotation.x = -Math.PI / 2;
+                road.position.set(x, 0.05, 0);
+                road.receiveShadow = true;
+                this.scene.add(road);
+            }
         }
+
+        // Horizontal roads (along X)
         for (let z = -gridBound; z <= gridBound; z += roadGridSize) {
-            const road = new THREE.Mesh(new THREE.PlaneGeometry(gridBound * 2, roadWidth), roadMat);
-            road.rotation.x = -Math.PI / 2;
-            road.position.set(0, 0.05, z);
-            road.receiveShadow = true;
-            this.scene.add(road);
+            if (z === 0) {
+                // Split road into two segments with a gap for the lake
+                const road1 = new THREE.Mesh(new THREE.PlaneGeometry(gridBound - lakeSkipRadius, roadWidth), roadMat);
+                road1.rotation.x = -Math.PI / 2;
+                road1.position.set(-(gridBound + lakeSkipRadius) / 2, 0.05, z);
+                road1.receiveShadow = true;
+                this.scene.add(road1);
+
+                const road2 = new THREE.Mesh(new THREE.PlaneGeometry(gridBound - lakeSkipRadius, roadWidth), roadMat);
+                road2.rotation.x = -Math.PI / 2;
+                road2.position.set((gridBound + lakeSkipRadius) / 2, 0.05, z);
+                road2.receiveShadow = true;
+                this.scene.add(road2);
+            } else {
+                const road = new THREE.Mesh(new THREE.PlaneGeometry(gridBound * 2, roadWidth), roadMat);
+                road.rotation.x = -Math.PI / 2;
+                road.position.set(0, 0.05, z);
+                road.receiveShadow = true;
+                this.scene.add(road);
+            }
         }
     }
 
@@ -668,6 +2258,16 @@ export class World {
                     const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.3), bulbMat);
                     bulb.position.set(x + off[0], 8, z + off[1]);
                     this.scene.add(bulb);
+
+                    // Light pole collision
+                    const poleCollider = new THREE.Mesh(
+                        new THREE.CylinderGeometry(0.3, 0.3, 8, 6),
+                        new THREE.MeshBasicMaterial({ visible: false })
+                    );
+                    poleCollider.position.set(x + off[0], 4, z + off[1]);
+                    poleCollider.userData = { isCollisionBox: true, type: 'StreetLight' };
+                    this.scene.add(poleCollider);
+                    this.collisionObjects.push(poleCollider);
                 });
             }
         }
@@ -686,14 +2286,9 @@ export class World {
     }
 
     addUrbanProps() {
-        // Place an electronic bulletin board near the Grand Plaza entrance
-        this.createElectricBoard(75, 80, -Math.PI / 4);
-
-        // Smart Delivery Locker near Tower A
-        this.createDeliveryLocker(-40, 0, 15);
-
-        // Garbage Sorting Station
-        this.createGarbageStation(-40, 0, -15);
+        this.createElectricBoard(75, -60, -Math.PI / 4);
+        this.createDeliveryLocker(-60, 0, Math.PI / 2);
+        this.createGarbageStation(-60, -30, Math.PI / 2);
     }
 
     createDeliveryLocker(x, z, rotY) {
@@ -727,6 +2322,17 @@ export class World {
         group.rotation.y = rotY;
         this.scene.add(group);
 
+        // Collision box
+        const lockerCollider = new THREE.Mesh(
+            new THREE.BoxGeometry(10, 5, 2),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        lockerCollider.position.set(x, 2.5, z);
+        lockerCollider.rotation.y = rotY;
+        lockerCollider.userData = { isCollisionBox: true, type: 'DeliveryLocker' };
+        this.scene.add(lockerCollider);
+        this.collisionObjects.push(lockerCollider);
+
         const label = this.createLabel('智能快递柜 (Smart Locker)');
         label.position.set(x, 7, z);
         this.scene.add(label);
@@ -755,6 +2361,17 @@ export class World {
         group.rotation.y = rotY;
         this.scene.add(group);
 
+        // Collision box for garbage station
+        const garbageCollider = new THREE.Mesh(
+            new THREE.BoxGeometry(8, 2.5, 1.5),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        garbageCollider.position.set(x, 1.25, z);
+        garbageCollider.rotation.y = rotY;
+        garbageCollider.userData = { isCollisionBox: true, type: 'GarbageStation' };
+        this.scene.add(garbageCollider);
+        this.collisionObjects.push(garbageCollider);
+
         const label = this.createLabel('垃圾分类站 (Garbage Station)');
         label.position.set(x, 5, z);
         this.scene.add(label);
@@ -779,10 +2396,30 @@ export class World {
         booth.position.set(12, 0, bound - 10);
         gateGroup.add(booth);
 
+        // Booth collision
+        const boothCollider = new THREE.Mesh(
+            new THREE.BoxGeometry(4, 5, 4),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        boothCollider.position.set(12, 2.5, bound - 10);
+        boothCollider.userData = { isCollisionBox: true, type: 'SecurityBooth' };
+        this.scene.add(boothCollider);
+        this.collisionObjects.push(boothCollider);
+
         // Boom Barrier (Lever)
         const barrierBase = new THREE.Mesh(new THREE.BoxGeometry(1, 4, 1), new THREE.MeshStandardMaterial({ color: 0xffaa00 }));
         barrierBase.position.set(8, 2, bound);
         gateGroup.add(barrierBase);
+
+        // Barrier collision
+        const barrierCollider = new THREE.Mesh(
+            new THREE.BoxGeometry(1, 4, 1),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        barrierCollider.position.set(8, 2, bound);
+        barrierCollider.userData = { isCollisionBox: true, type: 'Barrier' };
+        this.scene.add(barrierCollider);
+        this.collisionObjects.push(barrierCollider);
 
         const lever = new THREE.Mesh(new THREE.BoxGeometry(12, 0.3, 0.3), new THREE.MeshStandardMaterial({ color: 0xffffff }));
         lever.position.set(2, 3.5, bound);
@@ -792,6 +2429,16 @@ export class World {
         const wall = new THREE.Mesh(new THREE.BoxGeometry(10, 6, 2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
         wall.position.set(-15, 3, bound);
         gateGroup.add(wall);
+
+        // Wall collision
+        const wallCollider = new THREE.Mesh(
+            new THREE.BoxGeometry(10, 6, 2),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        wallCollider.position.set(-15, 3, bound);
+        wallCollider.userData = { isCollisionBox: true, type: 'NameBoard' };
+        this.scene.add(wallCollider);
+        this.collisionObjects.push(wallCollider);
 
         const label = this.createLabel('锦绣华庭 (JINXIU TOWER)');
         label.position.set(-15, 10, bound);
@@ -857,6 +2504,17 @@ export class World {
         if (!this.boards) this.boards = [];
         this.boards.push(boardData);
 
+        // Electric board collision
+        const boardCollider = new THREE.Mesh(
+            new THREE.BoxGeometry(12, 11, 1),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        boardCollider.position.set(x, 6, z);
+        boardCollider.rotation.y = rotY;
+        boardCollider.userData = { isCollisionBox: true, type: 'ElectricBoard' };
+        this.scene.add(boardCollider);
+        this.collisionObjects.push(boardCollider);
+
         group.position.set(x, 0, z);
         group.rotation.y = rotY;
         this.scene.add(group);
@@ -909,64 +2567,6 @@ export class World {
         ctx.fillText("SYSTEM STATUS: OK | DATA SYNCED", 30, h - 30);
 
         texture.needsUpdate = true;
-    }
-
-    createFence(group, width, depth) {
-        const fenceGroup = new THREE.Group();
-        const postGeo = new THREE.BoxGeometry(0.2, 1.2, 0.2);
-        const railGeo = new THREE.BoxGeometry(width, 0.1, 0.1);
-        const fenceMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 1.0 });
-
-        // Simple perimeter fence with gap for entrance
-        const positions = [
-            { x: 0, z: -depth / 2, rot: 0 }, // Back
-            { x: -width / 2, z: 0, rot: Math.PI / 2 }, // Left
-            { x: width / 2, z: 0, rot: Math.PI / 2 }, // Right
-            { x: -width / 4 - 1, z: depth / 2, rot: 0 }, // Front Left
-            { x: width / 4 + 1, z: depth / 2, rot: 0 }, // Front Right
-        ];
-
-        positions.forEach(pos => {
-            const railTop = new THREE.Mesh(railGeo, fenceMat);
-            const railMid = new THREE.Mesh(railGeo, fenceMat);
-
-            // Adjust rail length for front segments
-            if (pos.z === depth / 2) {
-                railTop.scale.x = 0.5;
-                railMid.scale.x = 0.5;
-            }
-
-            railTop.position.set(pos.x, 0.9, pos.z);
-            railMid.position.set(pos.x, 0.5, pos.z);
-            railTop.rotation.y = pos.rot;
-            railMid.rotation.y = pos.rot;
-            fenceGroup.add(railTop, railMid);
-        });
-
-        // Add posts at corners
-        const corners = [
-            { x: -width / 2, z: -depth / 2 },
-            { x: width / 2, z: -depth / 2 },
-            { x: -width / 2, z: depth / 2 },
-            { x: width / 2, z: depth / 2 },
-            { x: -1.5, z: depth / 2 }, // Gate post L
-            { x: 1.5, z: depth / 2 }   // Gate post R
-        ];
-
-        corners.forEach(c => {
-            const post = new THREE.Mesh(postGeo, fenceMat);
-            post.position.set(c.x, 0.6, c.z);
-            fenceGroup.add(post);
-        });
-
-        group.add(fenceGroup);
-
-        // Add a Mailbox
-        const mbPost = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.2), fenceMat);
-        mbPost.position.set(2, 0.6, depth / 2 + 0.5);
-        const mbBox = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.5), new THREE.MeshStandardMaterial({ color: 0x444444 }));
-        mbBox.position.set(2, 1.2, depth / 2 + 0.5);
-        group.add(mbPost, mbBox);
     }
 
     createCommunityFence() {
@@ -1026,14 +2626,13 @@ export class World {
             const dx = endX - startX;
             const dz = endZ - startZ;
             const length = Math.sqrt(dx * dx + dz * dz);
-            const angle = Math.atan2(dx, dz); // Note: Three.js rotation Y is usually atan2(x, z)
+            const angle = Math.atan2(dx, dz);
 
             const maxSegmentLength = 10;
             const segments = Math.ceil(length / maxSegmentLength);
             const segmentLength = length / segments;
 
             for (let i = 0; i < segments; i++) {
-                // Determine center of this segment
                 const fraction = (i + 0.5) / segments;
                 const cx = startX + dx * fraction;
                 const cz = startZ + dz * fraction;
@@ -1043,6 +2642,17 @@ export class World {
                 panel.rotation.y = angle + Math.PI / 2;
                 fenceGroup.add(panel);
 
+                // Fence panel collision
+                const panelCollider = new THREE.Mesh(
+                    new THREE.BoxGeometry(segmentLength, panelHeight + 0.2, 0.2),
+                    new THREE.MeshBasicMaterial({ visible: false })
+                );
+                panelCollider.position.set(cx, panelElevation + panelHeight / 2, cz);
+                panelCollider.rotation.y = angle + Math.PI / 2;
+                panelCollider.userData = { isCollisionBox: true, type: 'FencePanel' };
+                this.scene.add(panelCollider);
+                this.collisionObjects.push(panelCollider);
+
                 // Add a pillar at the start of the segment
                 const px = startX + dx * (i / segments);
                 const pz = startZ + dz * (i / segments);
@@ -1051,6 +2661,16 @@ export class World {
                 pillar.castShadow = true;
                 pillar.receiveShadow = true;
                 fenceGroup.add(pillar);
+
+                // Pillar collision
+                const pillarCollider = new THREE.Mesh(
+                    new THREE.BoxGeometry(pillarSize, pillarHeight, pillarSize),
+                    new THREE.MeshBasicMaterial({ visible: false })
+                );
+                pillarCollider.position.set(px, pillarHeight / 2, pz);
+                pillarCollider.userData = { isCollisionBox: true, type: 'FencePillar' };
+                this.scene.add(pillarCollider);
+                this.collisionObjects.push(pillarCollider);
             }
             // Add final pillar at the end
             const endPillar = new THREE.Mesh(pillarGeo, pillarMat);
@@ -1058,6 +2678,16 @@ export class World {
             endPillar.castShadow = true;
             endPillar.receiveShadow = true;
             fenceGroup.add(endPillar);
+
+            // Final pillar collision
+            const endPillarCollider = new THREE.Mesh(
+                new THREE.BoxGeometry(pillarSize, pillarHeight, pillarSize),
+                new THREE.MeshBasicMaterial({ visible: false })
+            );
+            endPillarCollider.position.set(endX, pillarHeight / 2, endZ);
+            endPillarCollider.userData = { isCollisionBox: true, type: 'FencePillar' };
+            this.scene.add(endPillarCollider);
+            this.collisionObjects.push(endPillarCollider);
         };
 
         const gateWidth = 3;

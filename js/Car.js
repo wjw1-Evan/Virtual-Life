@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { assetLoader } from './AssetLoader.js';
+import { assetLoader } from './AssetLoader.js?v=31';
 
 export class Car {
     constructor(scene, x, y, z) {
